@@ -1,0 +1,482 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg: #F4F5EF;
+  --bg-2: #F6F7F2;
+  --surface: #FFFFFF;
+  --surface-alt: #FBFBF7;
+  --border: #E6E7DF;
+  --border-strong: #D5D5CB;
+  --ink: #0E1014;
+  --ink-2: #2A2D33;
+  --muted: #6B7280;
+  --subtle: #9CA3AF;
+
+  --green: #0F9D70;
+  --green-2: #0B7A57;
+  --green-bg: rgba(15, 157, 112, 0.10);
+  --green-ring: rgba(15, 157, 112, 0.22);
+  --blue: #2563EB;
+  --blue-bg: rgba(37, 99, 235, 0.10);
+  --amber: #C2680A;
+  --amber-bg: rgba(217, 119, 6, 0.12);
+  --purple: #6D28D9;
+  --purple-bg: rgba(124, 58, 237, 0.10);
+
+  --shadow-xs: 0 1px 2px rgba(14, 16, 20, 0.04);
+  --shadow-sm: 0 1px 2px rgba(14, 16, 20, 0.04), 0 1px 3px rgba(14, 16, 20, 0.04);
+  --shadow-md: 0 6px 18px rgba(14, 16, 20, 0.06), 0 2px 4px rgba(14, 16, 20, 0.04);
+
+  --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-body: 'Geist', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ============ APP SHELL ============ */
+.stApp {
+  background:
+    radial-gradient(1100px 700px at 90% -10%, rgba(15, 157, 112, 0.08), transparent 60%),
+    radial-gradient(700px 500px at -10% 110%, rgba(109, 40, 217, 0.06), transparent 60%),
+    var(--bg) !important;
+  background-attachment: fixed;
+  font-family: var(--font-body);
+  color: var(--ink);
+}
+
+.stApp,
+.stApp p,
+.stApp span,
+.stApp div,
+.stApp label {
+  font-family: var(--font-body);
+}
+
+/* Tighten the empty space above the masthead */
+.block-container {
+  padding-top: 2rem !important;
+  padding-bottom: 4rem !important;
+  max-width: 1340px !important;
+}
+
+/* Streamlit's top bar — make it transparent and short */
+[data-testid="stHeader"] {
+  background: transparent !important;
+  height: 0 !important;
+}
+
+[data-testid="stToolbar"] {
+  right: 1rem;
+  top: 0.5rem;
+}
+
+/* ============ MASTHEAD ============ */
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  animation: rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+.masthead__logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background:
+    radial-gradient(120% 120% at 0% 0%, #1c2027 0%, #0E1014 60%);
+  color: #C9F7DC;
+  display: grid;
+  place-items: center;
+  box-shadow:
+    0 10px 24px rgba(14, 16, 20, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 0 -10px 18px rgba(15, 157, 112, 0.18);
+  flex-shrink: 0;
+}
+
+.masthead__logo svg {
+  width: 28px;
+  height: 28px;
+  stroke-width: 2.2;
+}
+
+.masthead__textwrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.masthead__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--green-2);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.masthead__eyebrow::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 4px var(--green-ring);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.92); }
+}
+
+.masthead__title {
+  font-family: var(--font-display) !important;
+  font-size: 36px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.025em !important;
+  line-height: 1.05 !important;
+  color: var(--ink) !important;
+  margin: 0 !important;
+  font-variation-settings: "opsz" 64;
+}
+
+@media (max-width: 760px) {
+  .masthead__title { font-size: 28px !important; }
+}
+
+/* ============ META BAR ============ */
+.metabar {
+  margin-top: 18px;
+  margin-bottom: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  animation: rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  animation-delay: 0.06s;
+}
+
+.metabar__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  box-shadow: var(--shadow-xs);
+}
+
+.metabar__label {
+  color: var(--subtle);
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.metabar__value {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.metabar__pill--accent {
+  background: var(--green-bg);
+  border-color: var(--green-ring);
+}
+
+.metabar__pill--accent .metabar__label,
+.metabar__pill--accent .metabar__value {
+  color: var(--green-2);
+}
+
+.metabar__note {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  margin-left: 4px;
+}
+
+/* ============ KPI GRID ============ */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 30px;
+}
+
+@media (max-width: 980px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 540px) { .kpi-grid { grid-template-columns: 1fr; } }
+
+.kpi {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 22px 24px 20px;
+  overflow: hidden;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s ease, border-color 0.25s ease;
+  box-shadow: var(--shadow-sm);
+  animation: rise 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+.kpi:nth-child(1) { animation-delay: 0.08s; }
+.kpi:nth-child(2) { animation-delay: 0.14s; }
+.kpi:nth-child(3) { animation-delay: 0.20s; }
+.kpi:nth-child(4) { animation-delay: 0.26s; }
+
+.kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-strong);
+}
+
+.kpi::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent 60%, var(--accent-bg) 140%);
+  pointer-events: none;
+}
+
+.kpi::after {
+  content: '';
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-bg) 0%, transparent 65%);
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.kpi__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  position: relative;
+  z-index: 1;
+}
+
+.kpi__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  box-shadow: inset 0 0 0 1px var(--accent-bg);
+}
+
+.kpi__icon svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2;
+}
+
+.kpi__chip {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  background: var(--accent-bg);
+  padding: 5px 11px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.kpi__value {
+  font-family: var(--font-display);
+  font-size: 46px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  color: var(--ink);
+  line-height: 1;
+  margin-bottom: 10px;
+  position: relative;
+  z-index: 1;
+  font-feature-settings: "tnum" 1;
+  font-variation-settings: "opsz" 96;
+}
+
+.kpi__caption {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  position: relative;
+  z-index: 1;
+}
+
+.kpi--blue   { --accent: var(--blue);   --accent-bg: var(--blue-bg); }
+.kpi--green  { --accent: var(--green);  --accent-bg: var(--green-bg); }
+.kpi--amber  { --accent: var(--amber);  --accent-bg: var(--amber-bg); }
+.kpi--purple { --accent: var(--purple); --accent-bg: var(--purple-bg); }
+
+/* ============ SECTION HEADERS ============ */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  margin-top: 4px;
+}
+
+.section-head__title {
+  font-family: var(--font-display) !important;
+  font-size: 22px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.018em !important;
+  color: var(--ink) !important;
+  margin: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-variation-settings: "opsz" 32;
+}
+
+.section-head__title::before {
+  content: '';
+  width: 4px;
+  height: 18px;
+  background: linear-gradient(180deg, var(--ink) 0%, var(--ink-2) 100%);
+  border-radius: 2px;
+}
+
+.section-head__caption {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.section-divider { height: 8px; }
+
+/* ============ CHART CARDS ============ */
+[data-testid="stPlotlyChart"] {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 16px 18px 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ============ CAPTIONS ============ */
+[data-testid="stCaptionContainer"] {
+  font-family: var(--font-body) !important;
+  color: var(--muted) !important;
+  font-size: 11.5px !important;
+}
+
+/* ============ INPUTS ============ */
+[data-testid="stTextInput"] input,
+[data-testid="stSelectbox"] [data-baseweb="select"] > div {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  font-family: var(--font-body) !important;
+  font-size: 13px !important;
+  color: var(--ink) !important;
+  box-shadow: var(--shadow-xs) !important;
+  transition: all 0.15s ease !important;
+}
+
+[data-testid="stTextInput"] input::placeholder {
+  color: var(--subtle) !important;
+}
+
+[data-testid="stTextInput"] input:focus {
+  border-color: var(--green) !important;
+  box-shadow: 0 0 0 3px var(--green-bg) !important;
+  outline: none !important;
+}
+
+[data-testid="stSelectbox"] [data-baseweb="select"] > div:hover {
+  border-color: var(--border-strong) !important;
+}
+
+/* Filter dropdown — make it look like a control chip */
+.filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.filter-row__label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--subtle);
+}
+
+/* ============ DATAFRAME ============ */
+[data-testid="stDataFrame"] {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+[data-testid="stDataFrame"] [role="columnheader"] {
+  background: var(--surface-alt) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.12em !important;
+  color: var(--muted) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+[data-testid="stDataFrame"] [role="row"] [role="gridcell"] {
+  font-family: var(--font-body) !important;
+  font-size: 13px !important;
+  color: var(--ink) !important;
+}
+
+/* ============ PADDED CONTAINER FOR HEADER ROW ============ */
+.search-pad { height: 28px; }
+
+/* ============ HORIZONTAL RULES (we hide most) ============ */
+hr {
+  border: none !important;
+  height: 1px !important;
+  background: linear-gradient(90deg, transparent, var(--border) 30%, var(--border) 70%, transparent) !important;
+  margin: 28px 0 !important;
+}
+
+/* ============ ENTRANCE ANIMATION ============ */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Streamlit's vertical block has aggressive default gaps — tighten */
+[data-testid="stVerticalBlock"] {
+  gap: 0.4rem !important;
+}
+
+/* But keep block-container's vertical block child default for outer spacing */
+.block-container > [data-testid="stVerticalBlock"] {
+  gap: 0.6rem !important;
+}

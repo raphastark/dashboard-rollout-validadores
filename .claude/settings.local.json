@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile app.py src/data.py src/metrics.py src/ui.py)",
+      "Bash(python -m py_compile app.py src/data.py)",
+      "Bash(python -m py_compile app.py src/ui.py)",
+      "Bash(python -m py_compile src/ui.py)",
+      "Bash(python -m py_compile src/ui.py src/data.py)"
+    ]
+  }
+}

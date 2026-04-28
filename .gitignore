@@ -1,0 +1,28 @@
+# Streamlit secrets — NEVER commit the real service account
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local data dumps / scratch
+*.csv
+*.parquet
+scratch/
