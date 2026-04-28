@@ -175,7 +175,8 @@ def render_history_chart(history: pd.DataFrame) -> None:
             bgcolor="rgba(0,0,0,0)",
             itemsizing="constant",
             tracegroupgap=18,
-            itemwidth=30,
+            entrywidthmode="pixels",
+            entrywidth=92,
         ),
         xaxis=dict(
             showgrid=False,
