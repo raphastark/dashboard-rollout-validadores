@@ -118,10 +118,10 @@ def _color_for(version: str, ordered_versions: list[str]) -> str:
     return PALETTE[0]
 
 
-def _base_layout(height: int = 360) -> dict:
+def _base_layout(height: int = 340) -> dict:
     return dict(
         height=height,
-        margin=dict(l=16, r=44, t=58, b=48),
+        margin=dict(l=22, r=44, t=54, b=48),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(family=CHART_FONT, color=CHART_INK, size=12),
@@ -142,28 +142,40 @@ def render_history_chart(history: pd.DataFrame) -> None:
     for v in versions_sorted:
         sub = history[history["versao_app"] == v].sort_values("data")
         color = _color_for(v, versions_sorted)
+        short = v.replace("V.", "")
         fig.add_trace(
             go.Scatter(
                 x=sub["data"],
                 y=sub["validadores"],
-                mode="lines+markers",
-                name=f"Build {v}",
+                mode="lines",
+                name=short,
                 line=dict(color=color, width=2.5, shape="spline", smoothing=0.4),
-                marker=dict(size=11, line=dict(color="#FFFFFF", width=2), color=color),
+                legendgroup=v,
+                hoverinfo="skip",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=sub["data"],
+                y=sub["validadores"],
+                mode="markers",
+                marker=dict(size=10, line=dict(color="#FFFFFF", width=2), color=color),
+                legendgroup=v,
+                showlegend=False,
                 hovertemplate=f"<b>{v}</b><br>%{{x|%d/%m/%Y}} · %{{y}} validadores<extra></extra>",
             )
         )
-    layout = _base_layout(height=360)
+    layout = _base_layout(height=340)
     layout.update(
         legend=dict(
             orientation="h",
             yanchor="bottom", y=1.08,
             xanchor="center", x=0.5,
-            font=dict(family=CHART_MONO, size=11, color=CHART_INK),
+            font=dict(family=CHART_MONO, size=10.5, color=CHART_INK),
             bgcolor="rgba(0,0,0,0)",
             itemsizing="constant",
-            tracegroupgap=24,
-            entrywidth=120,
+            tracegroupgap=18,
+            itemwidth=30,
         ),
         xaxis=dict(
             showgrid=False,
@@ -192,12 +204,13 @@ def render_history_chart(history: pd.DataFrame) -> None:
 def render_today_chart(today: pd.DataFrame, target_build: str) -> None:
     versions_sorted = sorted(today["versao_app"].unique(), key=_version_key, reverse=True)
     today = today.set_index("versao_app").loc[versions_sorted].reset_index()
+    today["display_y"] = today["versao_app"].str.replace("V.", "", regex=False)
 
     colors = ["#0F9D70" if v == target_build else "#2563EB" for v in today["versao_app"]]
     fig = go.Figure(
         go.Bar(
             x=today["validadores"],
-            y=today["versao_app"],
+            y=today["display_y"],
             orientation="h",
             marker=dict(
                 color=colors,
@@ -206,11 +219,12 @@ def render_today_chart(today: pd.DataFrame, target_build: str) -> None:
             text=today["validadores"],
             textposition="outside",
             textfont=dict(family=CHART_MONO, size=11, color=CHART_INK),
-            hovertemplate="<b>%{y}</b><br>%{x} validadores<extra></extra>",
+            customdata=today["versao_app"],
+            hovertemplate="<b>%{customdata}</b><br>%{x} validadores<extra></extra>",
             width=0.55,
         )
     )
-    layout = _base_layout(height=360)
+    layout = _base_layout(height=340)
     layout.update(
         xaxis=dict(
             showgrid=True,
@@ -244,7 +258,7 @@ def render_inventory(inventory: pd.DataFrame) -> None:
     )
     display["Veículo"] = "#" + display["Veículo"].astype(str)
     display["Status Final"] = display["Status Final"].apply(
-        lambda v: "● Operação OK" if v == "OPERAÇÃO OK" else "○ Pendente"
+        lambda v: "● Atualizado" if v == "ATUALIZADO" else "○ Pendente"
     )
     st.dataframe(
         display,

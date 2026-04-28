@@ -373,8 +373,9 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 18px;
-  padding: 16px 18px 12px;
+  padding: 14px 16px 14px;
   box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 
 /* ============ CAPTIONS ============ */
@@ -450,8 +451,9 @@
 
 [data-testid="stDataFrame"] [role="row"] [role="gridcell"] {
   font-family: var(--font-body) !important;
-  font-size: 13px !important;
+  font-size: 12px !important;
   color: var(--ink) !important;
+  letter-spacing: -0.005em !important;
 }
 
 /* ============ PADDED CONTAINER FOR HEADER ROW ============ */

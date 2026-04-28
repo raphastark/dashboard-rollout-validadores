@@ -126,12 +126,12 @@ def build_inventory_table(df: pd.DataFrame, target_build: str) -> pd.DataFrame:
 
     def activity_for(row: pd.Series) -> str:
         per_date = by_pair.get((row["id_veiculo"], row["id_validador"]), {})
-        return " ".join(_dot_for_version(per_date.get(d), ordered) for d in all_dates)
+        return "".join(_dot_for_version(per_date.get(d), ordered) for d in all_dates)
 
     inventory["atividade_recente"] = inventory.apply(activity_for, axis=1)
     inventory["build_atual"] = inventory["build_atual"].fillna("—")
     inventory["status_final"] = inventory["build_atual"].apply(
-        lambda v: "OPERAÇÃO OK" if v == target_build else "PENDENTE"
+        lambda v: "ATUALIZADO" if v == target_build else "PENDENTE"
     )
 
     inventory = inventory.sort_values(["id_veiculo", "id_validador"]).reset_index(drop=True)
