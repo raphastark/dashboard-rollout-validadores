@@ -166,16 +166,13 @@ def render_history_chart(history: pd.DataFrame) -> None:
             )
         )
     layout = _base_layout(height=340)
-    layout.update(
+   layout.update(
         legend=dict(
             orientation="h",
-            yanchor="bottom", y=1.08,
+            yanchor="top", y=-0.15,      # <-- Modificado: Ancora no topo, posicionado abaixo do eixo X
             xanchor="center", x=0.5,
             font=dict(family=CHART_MONO, size=10.5, color=CHART_INK),
             bgcolor="rgba(0,0,0,0)",
-            itemsizing="constant",
-            tracegroupgap=18,
-            itemwidth=30,
         ),
         xaxis=dict(
             showgrid=False,
