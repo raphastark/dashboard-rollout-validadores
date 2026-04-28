@@ -121,7 +121,7 @@ def _color_for(version: str, ordered_versions: list[str]) -> str:
 def _base_layout(height: int = 340) -> dict:
     return dict(
         height=height,
-        margin=dict(l=22, r=44, t=54, b=48),
+        margin=dict(l=22, r=44, t=62, b=48),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(family=CHART_FONT, color=CHART_INK, size=12),
