@@ -30,7 +30,12 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-
+maintenance = st.secrets.get("app", {}).get("maintenance_mode", False)
+if maintenance:
+    st.title("🔧 Em manutenção")
+    st.info("Este dashboard está temporariamente indisponível.")
+    st.stop()
+    
 def main() -> None:
     inject_styles()
 
