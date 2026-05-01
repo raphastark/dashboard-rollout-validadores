@@ -92,7 +92,7 @@ def render_section_head(title: str, caption: str | None = None) -> None:
 
 def render_kpi_cards(kpis: KPIs) -> None:
     cards = [
-        ("blue", "bus", "Frota Operante", str(kpis.frota_operante), "Último estado conhecido"),
+        ("blue", "bus", "Frota Operante", str(kpis.frota_operante), "Último estado no período consultado"),
         ("green", "target", "Adoção Alvo", f"{kpis.adocao_alvo_pct:.1f}%", f"Build {kpis.target_build}"),
         ("amber", "layers", "Variedade", str(kpis.variedade), "Versões ativas"),
         ("purple", "trending", "Meta Atingida", str(kpis.meta_atingida), "Unidades atualizadas"),
