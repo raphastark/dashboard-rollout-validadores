@@ -34,9 +34,31 @@ def latest_date(df: pd.DataFrame) -> date:
     return df["data"].max()
 
 
+def _latest_snapshot_as_of(df: pd.DataFrame, ref: date) -> pd.DataFrame:
+    """Retorna o último estado conhecido por validador até `ref`.
+
+    Args:
+        df: DataFrame com colunas data, id_veiculo, id_validador e versao_app.
+        ref: Data de referência para o recorte as-of.
+
+    Returns:
+        DataFrame com uma linha por id_validador contendo o registro mais recente
+        até `ref`, priorizando versão mais alta quando houver empate no mesmo dia.
+    """
+    base = df[df["data"] <= ref]
+    if base.empty:
+        return base.copy()
+    base = _dedupe_max_version_per_day(base)
+    keyed = base.assign(_vk=base["versao_app"].apply(_version_key)).sort_values(
+        ["id_validador", "data", "_vk"]
+    )
+    return keyed.drop_duplicates(["id_validador"], keep="last").drop(columns="_vk")
+
+
 def detect_target_build(df: pd.DataFrame) -> str:
-    most_recent = df[df["data"] == latest_date(df)]
-    versions = most_recent["versao_app"].dropna().unique().tolist()
+    ref = latest_date(df)
+    snapshot = _latest_snapshot_as_of(df, ref)
+    versions = snapshot["versao_app"].dropna().unique().tolist()
     if not versions:
         return ""
     return max(versions, key=_version_key)
@@ -44,36 +66,52 @@ def detect_target_build(df: pd.DataFrame) -> str:
 
 def compute_kpis(df: pd.DataFrame, target_build: str) -> KPIs:
     ref = latest_date(df)
-    today_df = df[df["data"] == ref]
-    on_target = today_df[today_df["versao_app"] == target_build]
+    snapshot = _latest_snapshot_as_of(df, ref)
+    on_target = snapshot[snapshot["versao_app"] == target_build]
 
-    total_validadores = today_df["id_validador"].nunique()
+    total_validadores = snapshot["id_validador"].nunique()
     on_target_validadores = on_target["id_validador"].nunique()
     pct = (on_target_validadores / total_validadores * 100.0) if total_validadores else 0.0
 
     return KPIs(
-        frota_operante=int(today_df["id_veiculo"].nunique()),
+        frota_operante=int(snapshot["id_veiculo"].nunique()),
         adocao_alvo_pct=pct,
-        variedade=int(today_df["versao_app"].nunique()),
+        variedade=int(snapshot["versao_app"].nunique()),
         meta_atingida=int(on_target_validadores),
         target_build=target_build,
         reference_date=ref,
     )
 
 
-def build_history_series(df: pd.DataFrame) -> pd.DataFrame:
-    g = (
-        df.groupby(["data", "versao_app"], as_index=False)["id_validador"]
-        .nunique()
-        .rename(columns={"id_validador": "validadores"})
-    )
-    g["data"] = pd.to_datetime(g["data"])
+def build_history_series(df: pd.DataFrame, days: int = 3) -> pd.DataFrame:
+    """Constrói série diária por versão com snapshot as-of na janela recente.
+
+    Para cada data da janela (padrão: últimos 3 dias disponíveis), calcula a
+    distribuição por versão usando o último estado conhecido de cada validador
+    até aquela data.
+    """
+    all_dates: List[date] = sorted(df["data"].unique())[-max(days, 1) :]
+    chunks: List[pd.DataFrame] = []
+    for d in all_dates:
+        snapshot = _latest_snapshot_as_of(df, d)
+        if snapshot.empty:
+            continue
+        per_version = (
+            snapshot.groupby("versao_app", as_index=False)["id_validador"]
+            .nunique()
+            .rename(columns={"id_validador": "validadores"})
+        )
+        per_version["data"] = pd.to_datetime(d)
+        chunks.append(per_version)
+    if not chunks:
+        return pd.DataFrame(columns=["data", "versao_app", "validadores"])
+    g = pd.concat(chunks, ignore_index=True)
     return g.sort_values(["versao_app", "data"])
 
 
 def build_today_status(df: pd.DataFrame) -> pd.DataFrame:
     ref = latest_date(df)
-    today_df = df[df["data"] == ref]
+    today_df = _latest_snapshot_as_of(df, ref)
     g = (
         today_df.groupby("versao_app", as_index=False)["id_validador"]
         .nunique()

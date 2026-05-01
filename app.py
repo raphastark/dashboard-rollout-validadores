@@ -79,8 +79,8 @@ def main() -> None:
         render_section_head("Status Hoje", latest_date(df).strftime("%d/%m/%Y"))
         render_today_chart(build_today_status(df), target_build)
         st.caption(
-            f"Apenas validadores que reportaram atividade no dia "
-            f"{latest_date(df).strftime('%d/%m/%Y')}."
+            f"Último estado conhecido por validador na janela consultada "
+            f"(últimos 3 dias), até o dia {latest_date(df).strftime('%d/%m/%Y')}."
         )
 
     st.markdown('<div style="height: 16px"></div>', unsafe_allow_html=True)
