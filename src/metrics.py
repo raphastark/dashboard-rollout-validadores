@@ -83,13 +83,14 @@ def compute_kpis(df: pd.DataFrame, target_build: str) -> KPIs:
     )
 
 
-def build_history_series(df: pd.DataFrame) -> pd.DataFrame:
-    """Constrói série histórica diária por versão com snapshot as-of.
+def build_history_series(df: pd.DataFrame, days: int = 3) -> pd.DataFrame:
+    """Constrói série diária por versão com snapshot as-of na janela recente.
 
-    Para cada data disponível, calcula a distribuição por versão usando o último
-    estado conhecido de cada validador até aquela data.
+    Para cada data da janela (padrão: últimos 3 dias disponíveis), calcula a
+    distribuição por versão usando o último estado conhecido de cada validador
+    até aquela data.
     """
-    all_dates: List[date] = sorted(df["data"].unique())
+    all_dates: List[date] = sorted(df["data"].unique())[-max(days, 1) :]
     chunks: List[pd.DataFrame] = []
     for d in all_dates:
         snapshot = _latest_snapshot_as_of(df, d)
