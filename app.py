@@ -79,7 +79,7 @@ def main() -> None:
         render_section_head("Status Hoje", latest_date(df).strftime("%d/%m/%Y"))
         render_today_chart(build_today_status(df), target_build)
         st.caption(
-            f"Apenas validadores que reportaram atividade no dia "
+            f"Último estado conhecido por validador até o dia "
             f"{latest_date(df).strftime('%d/%m/%Y')}."
         )
 
