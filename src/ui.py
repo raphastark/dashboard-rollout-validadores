@@ -73,7 +73,7 @@ def render_metabar(kpis: KPIs, fetched_at: datetime) -> None:
         '<span class="metabar__label">Build alvo</span>'
         f'<span class="metabar__value">{target}</span>'
         '</div>'
-        '<span class="metabar__note">Consulta 1×/dia · updates dos validadores ocorrem na madrugada</span>'
+        '<span class="metabar__note">Cache até 1h · vira a chave na data de São Paulo</span>'
         '</div>'
     )
     st.markdown(html, unsafe_allow_html=True)
@@ -92,10 +92,10 @@ def render_section_head(title: str, caption: str | None = None) -> None:
 
 def render_kpi_cards(kpis: KPIs) -> None:
     cards = [
-        ("blue", "bus", "Frota Operante", str(kpis.frota_operante), "Último estado no período consultado"),
+        ("blue", "bus", "Frota Operante", str(kpis.frota_operante), "Veículos com validador reportando hoje"),
         ("green", "target", "Adoção Alvo", f"{kpis.adocao_alvo_pct:.1f}%", f"Build {kpis.target_build}"),
-        ("amber", "layers", "Variedade", str(kpis.variedade), "Versões ativas"),
-        ("purple", "trending", "Meta Atingida", str(kpis.meta_atingida), "Unidades atualizadas"),
+        ("amber", "layers", "Variedade", str(kpis.variedade), "Versões reportadas hoje"),
+        ("purple", "trending", "Meta Atingida", str(kpis.meta_atingida), "Validadores ativos na build alvo"),
     ]
     cards_html = "".join(
         '<div class="kpi kpi--' + color + '">'
