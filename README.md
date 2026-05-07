@@ -132,3 +132,4 @@ src/
 requirements.txt
 ```
 # dashboard-rollout-validadores
+
