@@ -55,93 +55,28 @@ def _latest_snapshot_as_of(df: pd.DataFrame, ref: date) -> pd.DataFrame:
     return keyed.drop_duplicates(["id_validador"], keep="last").drop(columns="_vk")
 
 
-def _active_snapshot_on(df: pd.DataFrame, ref: date) -> pd.DataFrame:
-    """Retorna validadores que reportaram na data de referência."""
-    base = df[df["data"] == ref]
-    if base.empty:
-        return base.copy()
-    base = _dedupe_max_version_per_day(base)
-    keyed = base.assign(_vk=base["versao_app"].apply(_version_key)).sort_values(
-        ["id_validador", "_vk", "id_veiculo"]
-    )
-    return keyed.drop_duplicates(["id_validador"], keep="last").drop(columns="_vk")
-
-
-def _version_counts(snapshot: pd.DataFrame) -> pd.Series:
-    if snapshot.empty:
-        return pd.Series(dtype="int64")
-    return snapshot.groupby("versao_app")["id_validador"].nunique()
-
-
 def detect_target_build(df: pd.DataFrame) -> str:
-    """Detecta a build alvo pela tendência operacional do dia.
-
-    Primeiro procura a versão que mais cresceu contra a data anterior. Se não
-    houver crescimento positivo, usa a moda dos validadores ativos no dia.
-    """
     ref = latest_date(df)
-    active_today = _active_snapshot_on(df, ref)
-    today_counts = _version_counts(active_today)
-    if today_counts.empty:
-        snapshot = _latest_snapshot_as_of(df, ref)
-        versions = snapshot["versao_app"].dropna().unique().tolist()
-        return max(versions, key=_version_key) if versions else ""
-
-    all_dates: List[date] = sorted(df["data"].unique())
-    previous_dates = [d for d in all_dates if d < ref]
-    if not previous_dates:
-        return max(today_counts.index, key=lambda v: (today_counts[v], _version_key(v)))
-
-    previous_counts = _version_counts(_active_snapshot_on(df, previous_dates[-1]))
-    growth = today_counts.subtract(previous_counts, fill_value=0)
-    growing = growth[growth > 0]
-    if growing.empty:
-        return max(today_counts.index, key=lambda v: (today_counts[v], _version_key(v)))
-
-    return max(
-        growing.index,
-        key=lambda v: (growth[v], today_counts.get(v, 0), _version_key(v)),
-    )
-
-
-def build_today_status(df: pd.DataFrame) -> pd.DataFrame:
-    ref = latest_date(df)
-    today_df = _active_snapshot_on(df, ref)
-    if today_df.empty:
-        return pd.DataFrame(columns=["versao_app", "validadores"])
-    g = (
-        today_df.groupby("versao_app", as_index=False)["id_validador"]
-        .nunique()
-        .rename(columns={"id_validador": "validadores"})
-    )
-    g["__key"] = g["versao_app"].apply(_version_key)
-    g = g.sort_values("__key", ascending=True).drop(columns="__key")
-    return g.reset_index(drop=True)
+    snapshot = _latest_snapshot_as_of(df, ref)
+    versions = snapshot["versao_app"].dropna().unique().tolist()
+    if not versions:
+        return ""
+    return max(versions, key=_version_key)
 
 
 def compute_kpis(df: pd.DataFrame, target_build: str) -> KPIs:
     ref = latest_date(df)
-    active_today = _active_snapshot_on(df, ref)
-    if active_today.empty:
-        return KPIs(
-            frota_operante=0,
-            adocao_alvo_pct=0.0,
-            variedade=0,
-            meta_atingida=0,
-            target_build=target_build,
-            reference_date=ref,
-        )
+    snapshot = _latest_snapshot_as_of(df, ref)
+    on_target = snapshot[snapshot["versao_app"] == target_build]
 
-    on_target = active_today[active_today["versao_app"] == target_build]
-
-    total_validadores = active_today["id_validador"].nunique()
+    total_validadores = snapshot["id_validador"].nunique()
     on_target_validadores = on_target["id_validador"].nunique()
     pct = (on_target_validadores / total_validadores * 100.0) if total_validadores else 0.0
 
     return KPIs(
-        frota_operante=int(active_today["id_veiculo"].nunique()),
+        frota_operante=int(snapshot["id_veiculo"].nunique()),
         adocao_alvo_pct=pct,
-        variedade=int(active_today["versao_app"].nunique()),
+        variedade=int(snapshot["versao_app"].nunique()),
         meta_atingida=int(on_target_validadores),
         target_build=target_build,
         reference_date=ref,
@@ -172,6 +107,19 @@ def build_history_series(df: pd.DataFrame, days: int = 3) -> pd.DataFrame:
         return pd.DataFrame(columns=["data", "versao_app", "validadores"])
     g = pd.concat(chunks, ignore_index=True)
     return g.sort_values(["versao_app", "data"])
+
+
+def build_today_status(df: pd.DataFrame) -> pd.DataFrame:
+    ref = latest_date(df)
+    today_df = _latest_snapshot_as_of(df, ref)
+    g = (
+        today_df.groupby("versao_app", as_index=False)["id_validador"]
+        .nunique()
+        .rename(columns={"id_validador": "validadores"})
+    )
+    g["__key"] = g["versao_app"].apply(_version_key)
+    g = g.sort_values("__key", ascending=True).drop(columns="__key")
+    return g.reset_index(drop=True)
 
 
 def _ordered_versions(df: pd.DataFrame, target_build: str) -> List[str]:
