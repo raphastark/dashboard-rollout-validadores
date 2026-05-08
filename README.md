@@ -62,13 +62,13 @@ Acesse http://localhost:8501.
 
 ## Uso
 
-- **KPIs do topo:** frota operante (veículos com validador reportando hoje), % de adoção da build alvo, número de versões reportadas hoje e quantidade de validadores ativos já atualizados.
-- **Build alvo:** detectada automaticamente pela versão que mais cresceu em validadores ativos contra a data anterior. Se nenhuma versão cresceu, usa a versão mais frequente no dia. Isso evita tratar como alvo uma build mais nova que sobrou em poucos validadores após rollback.
+- **KPIs do topo:** frota operante (veículos reportando hoje), % de adoção da build alvo, número de versões ativas e quantidade de validadores já atualizados.
+- **Build alvo:** detectada automaticamente como a versão mais alta presente no dia mais recente.
 - **Histórico de Rollout:** linha por versão ao longo dos últimos 3 dias.
-- **Status Hoje:** distribuição dos validadores que reportaram no dia mais recente. Validadores trocados ou mortos que só apareceram em dias anteriores continuam visíveis no inventário, mas não entram no denominador do % de adoção.
+- **Status Hoje:** distribuição dos validadores por versão no dia mais recente.
 - **Inventário:** tabela com 3 bolinhas de atividade (uma por dia): 🟢 reportou na build alvo, 🟡 reportou em build anterior, ⚪ não reportou.
 - **Filtros:** dropdown de versão e busca por `id_veiculo` ou `id_validador`.
-- **Atualização dos dados:** a query no BigQuery usa cache curto de até 1h e inclui a data local de São Paulo na chave do cache. Assim, uma consulta feita às 23:00 não congela o painel até 23:00 do dia seguinte; depois da meia-noite local a próxima abertura já força uma consulta nova.
+- **Atualização dos dados:** a query no BigQuery roda no máximo 1x a cada 24h (cache via `@st.cache_data(ttl=86400)`). Como os upgrades dos validadores são feitos pela empresa de bilhetagem na madrugada, não há ganho em consultar com mais frequência — e evita custo desnecessário no BigQuery.
 
 ## Changelog
 
@@ -132,4 +132,3 @@ src/
 requirements.txt
 ```
 # dashboard-rollout-validadores
-
