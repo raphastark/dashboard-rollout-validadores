@@ -30,9 +30,9 @@ SELECT DISTINCT
     versao_app
 FROM `rj-smtr.monitoramento.gps_validador`
 WHERE id_operadora = @id_operadora
-  AND data BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL @window_days DAY) AND CURRENT_DATE()
+  AND data BETWEEN DATE_SUB(CURRENT_DATE('America/Sao_Paulo'), INTERVAL @window_days DAY) AND CURRENT_DATE('America/Sao_Paulo')
   AND (id_veiculo LIKE '515%' OR id_veiculo LIKE '516%')
-  AND datetime_gps >= CAST(DATE_SUB(CURRENT_DATE(), INTERVAL @window_days DAY) AS DATETIME)
+  AND datetime_gps >= CAST(DATE_SUB(CURRENT_DATE('America/Sao_Paulo'), INTERVAL @window_days DAY) AS DATETIME)
 ORDER BY id_veiculo ASC, id_validador ASC
 """
 
