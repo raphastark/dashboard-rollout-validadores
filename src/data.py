@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Tuple
 
 import pandas as pd
+import requests
 import streamlit as st
 from google.cloud import bigquery
 from google.oauth2 import service_account
@@ -21,6 +22,8 @@ PROJECT_ID = "rj-smtr"
 ID_OPERADORA = "220515009"
 VEHICLE_PREFIXES = ("515", "516")
 DEFAULT_WINDOW_DAYS = 2
+FLEET_API_TIMEOUT = 15
+FLEET_TRUTH_TTL = 24 * 60 * 60
 
 ROLLOUT_QUERY = """
 SELECT DISTINCT
@@ -68,5 +71,30 @@ def fetch_rollout_data(window_days: int = DEFAULT_WINDOW_DAYS) -> Tuple[pd.DataF
     return df, fetched_at
 
 
-def clear_cache() -> None:
+@st.cache_data(ttl=FLEET_TRUTH_TTL, show_spinner="Consultando frota em tempo real...")
+def fetch_fleet_truth() -> frozenset[str]:
+    """Conjunto de id_validador instalados na frota agora.
+
+    A API devolve, no instante da chamada, os validadores que estão transmitindo —
+    quem estiver momentaneamente offline pode ficar de fora. O resultado é usado
+    para filtrar a base do BigQuery e descartar validadores já removidos da frota.
+    """
+    url = st.secrets.get("fleet_api", {}).get("url")
+    if not url:
+        raise RuntimeError(
+            "URL da API da frota não configurada. Defina [fleet_api].url em "
+            ".streamlit/secrets.toml (ver secrets.toml.example)."
+        )
+    resp = requests.get(url, timeout=FLEET_API_TIMEOUT)
+    resp.raise_for_status()
+    payload = resp.json()
+    return frozenset(
+        str(item["id_validador"])
+        for item in payload
+        if item.get("id_validador") is not None
+    )
+
+
+def clear_all_caches() -> None:
     fetch_rollout_data.clear()
+    fetch_fleet_truth.clear()
