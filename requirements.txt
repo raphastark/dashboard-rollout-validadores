@@ -5,3 +5,4 @@ pandas>=2.2
 plotly>=5.24
 pyarrow>=17
 db-dtypes>=1.3
+requests>=2.32

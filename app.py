@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from src.data import fetch_rollout_data
+from src.data import clear_all_caches, fetch_fleet_truth, fetch_rollout_data
 from src.metrics import (
     build_history_series,
     build_inventory_table,
@@ -44,12 +44,22 @@ def main() -> None:
         render_masthead()
     with header_right:
         st.markdown('<div class="search-pad"></div>', unsafe_allow_html=True)
-        search = st.text_input(
-            "Busca rápida",
-            placeholder="Buscar por ônibus ou serial...",
-            label_visibility="collapsed",
-            key="search",
-        )
+        search_col, refresh_col = st.columns([5, 1])
+        with search_col:
+            search = st.text_input(
+                "Busca rápida",
+                placeholder="Buscar por ônibus ou serial...",
+                label_visibility="collapsed",
+                key="search",
+            )
+        with refresh_col:
+            if st.button(
+                "↻",
+                help="Atualizar dados agora (BigQuery + API da frota)",
+                use_container_width=True,
+            ):
+                clear_all_caches()
+                st.rerun()
 
     try:
         df, fetched_at = fetch_rollout_data()
@@ -60,6 +70,19 @@ def main() -> None:
         )
         st.exception(exc)
         st.stop()
+
+    try:
+        fleet_truth = fetch_fleet_truth()
+    except Exception as exc:
+        st.warning(
+            "Falha ao consultar a API da frota em tempo real. Exibindo dados sem "
+            "filtro de fonte da verdade — pode incluir validadores já removidos da frota."
+        )
+        st.exception(exc)
+        fleet_truth = None
+
+    if fleet_truth is not None:
+        df = df[df["id_validador"].isin(fleet_truth)].copy()
 
     if df.empty:
         st.warning("Nenhum dado retornado pela query nos últimos dias.")
