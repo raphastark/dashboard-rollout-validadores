@@ -3,6 +3,7 @@ from __future__ import annotations
 import warnings
 from datetime import datetime
 from typing import Tuple
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
@@ -24,6 +25,7 @@ VEHICLE_PREFIXES = ("515", "516")
 DEFAULT_WINDOW_DAYS = 2
 FLEET_API_TIMEOUT = 15
 FLEET_TRUTH_TTL = 24 * 60 * 60
+SAO_PAULO_TZ = ZoneInfo("America/Sao_Paulo")
 
 ROLLOUT_QUERY = """
 SELECT DISTINCT
@@ -67,7 +69,7 @@ def fetch_rollout_data(window_days: int = DEFAULT_WINDOW_DAYS) -> Tuple[pd.DataF
     df["id_veiculo"] = df["id_veiculo"].astype(str)
     df["id_validador"] = df["id_validador"].astype(str)
     df["versao_app"] = df["versao_app"].astype(str)
-    fetched_at = datetime.now()
+    fetched_at = datetime.now(SAO_PAULO_TZ)
     return df, fetched_at
 
 
