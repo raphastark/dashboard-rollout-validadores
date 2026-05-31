@@ -72,6 +72,13 @@ Acesse http://localhost:8501.
 
 ## Changelog
 
+### [2026-05-31] — Contagem fiel de validadores offline
+
+- **Correção:** validadores temporariamente offline (ex.: veículos em manutenção pesada com energia cortada) não são mais excluídos da contagem de KPIs e gráficos. Antes, o filtro da API da frota em tempo real removia esses validadores do DataFrame, fazendo com que o dashboard mostrasse 270/280 atualizados quando na verdade todos os 280 já estavam na versão nova.
+- **Inventário:** a coluna `build_atual` agora reflete o último estado conhecido do validador (via snapshot _as-of_) em vez de considerar apenas o dia corrente — se o validador atualizou ontem e está offline hoje, continua aparecendo como atualizado.
+- **Indicador de offline:** validadores que não estão transmitindo no momento recebem o marcador `· Offline` na coluna de status do inventário, mantendo a transparência operacional sem penalizar a métrica de adoção.
+- **Ajuste:** a API da frota em tempo real passou a ser usada apenas como informação auxiliar (marcação de offline), não mais como filtro duro que exclui dados do BigQuery.
+
 ### [2026-05-01] — Correção de métricas do histórico de rollout
 
 - **Correção:** contagem de validadores no histórico agora usa snapshot _as-of_ por validador — cada ponto da série reflete exatamente quais validadores estavam ativos naquele dia, evitando que veículos que saíram de operação distorçam os percentuais retroativamente.

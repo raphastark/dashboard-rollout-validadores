@@ -145,21 +145,27 @@ def _dedupe_max_version_per_day(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def build_inventory_table(df: pd.DataFrame, target_build: str) -> pd.DataFrame:
+def build_inventory_table(
+    df: pd.DataFrame,
+    target_build: str,
+    fleet_truth: frozenset[str] | None = None,
+) -> pd.DataFrame:
     ref = latest_date(df)
     all_dates: List[date] = sorted(df["data"].unique())
-    df = _dedupe_max_version_per_day(df)
-    ordered = _ordered_versions(df, target_build)
+    df_deduped = _dedupe_max_version_per_day(df)
+    ordered = _ordered_versions(df_deduped, target_build)
 
-    today_df = df[df["data"] == ref][["id_veiculo", "id_validador", "versao_app"]]
-    today_df = today_df.rename(columns={"versao_app": "build_atual"})
+    snapshot = _latest_snapshot_as_of(df, ref)
+    snapshot_build = snapshot[["id_veiculo", "id_validador", "versao_app"]].rename(
+        columns={"versao_app": "build_atual"}
+    )
 
-    keys = df[["id_veiculo", "id_validador"]].drop_duplicates()
-    inventory = keys.merge(today_df, on=["id_veiculo", "id_validador"], how="left")
+    keys = df_deduped[["id_veiculo", "id_validador"]].drop_duplicates()
+    inventory = keys.merge(snapshot_build, on=["id_veiculo", "id_validador"], how="left")
 
     by_pair = {
         (v, val): grp.set_index("data")["versao_app"].to_dict()
-        for (v, val), grp in df.groupby(["id_veiculo", "id_validador"])
+        for (v, val), grp in df_deduped.groupby(["id_veiculo", "id_validador"])
     }
 
     def activity_for(row: pd.Series) -> str:
@@ -168,9 +174,15 @@ def build_inventory_table(df: pd.DataFrame, target_build: str) -> pd.DataFrame:
 
     inventory["atividade_recente"] = inventory.apply(activity_for, axis=1)
     inventory["build_atual"] = inventory["build_atual"].fillna("—")
-    inventory["status_final"] = inventory["build_atual"].apply(
-        lambda v: "ATUALIZADO" if v == target_build else "PENDENTE"
-    )
+
+    def _status(row: pd.Series) -> str:
+        v = row["build_atual"]
+        status = "ATUALIZADO" if v == target_build else "PENDENTE"
+        if fleet_truth is not None and row["id_validador"] not in fleet_truth:
+            status += " · OFFLINE"
+        return status
+
+    inventory["status_final"] = inventory.apply(_status, axis=1)
 
     inventory = inventory.sort_values(["id_veiculo", "id_validador"]).reset_index(drop=True)
     return inventory[
