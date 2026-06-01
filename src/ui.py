@@ -259,7 +259,8 @@ def render_inventory(inventory: pd.DataFrame) -> None:
     )
     display["Veículo"] = "#" + display["Veículo"].astype(str)
     display["Status Final"] = display["Status Final"].apply(
-        lambda v: "● Atualizado" if v == "ATUALIZADO" else "○ Pendente"
+        lambda v: ("● Atualizado" if v.startswith("ATUALIZADO") else "○ Pendente")
+        + (" · Offline" if "OFFLINE" in v else "")
     )
     st.dataframe(
         display,

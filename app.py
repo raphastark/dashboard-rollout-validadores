@@ -76,18 +76,16 @@ def main() -> None:
     except Exception:
         st.warning(
             "Falha ao consultar a API da frota em tempo real. Exibindo dados sem "
-            "filtro de fonte da verdade — pode incluir validadores já removidos da frota."
+            "indicação de status online/offline dos validadores."
         )
         fleet_truth = None
 
     if fleet_truth is not None and not fleet_truth:
         st.warning(
-            "API da frota retornou vazia. Exibindo dados sem filtro de fonte da "
-            "verdade — pode incluir validadores já removidos da frota."
+            "API da frota retornou vazia. Exibindo dados sem indicação de "
+            "status online/offline dos validadores."
         )
-
-    if fleet_truth:
-        df = df[df["id_validador"].isin(fleet_truth)].copy()
+        fleet_truth = None
 
     if df.empty:
         st.warning("Nenhum dado retornado pela query nos últimos dias.")
@@ -130,7 +128,7 @@ def main() -> None:
             label_visibility="collapsed",
         )
 
-    inventory = build_inventory_table(df, target_build)
+    inventory = build_inventory_table(df, target_build, fleet_truth=fleet_truth)
     inventory = filter_inventory(inventory, selected_version, search)
 
     if inventory.empty:
