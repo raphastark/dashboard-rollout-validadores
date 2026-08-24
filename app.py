@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import streamlit as st
 
-from src.data import clear_all_caches, fetch_fleet_truth, fetch_rollout_data
+from src.data import (
+    STATE_PRUNE_DAYS,
+    clear_all_caches,
+    fetch_fleet_mapping,
+    fetch_fleet_truth,
+    fetch_rollout_data,
+    get_last_known_store,
+    today_sp,
+)
 from src.metrics import (
     build_history_series,
     build_inventory_table,
@@ -11,6 +19,7 @@ from src.metrics import (
     detect_target_build,
     filter_inventory,
     latest_date,
+    merge_last_known_state,
 )
 from src.ui import (
     inject_styles,
@@ -71,6 +80,27 @@ def main() -> None:
         st.exception(exc)
         st.stop()
 
+    if df.empty:
+        st.warning("Nenhum dado retornado pela query nos últimos dias.")
+        st.stop()
+
+    try:
+        roster = fetch_fleet_mapping()
+    except Exception:
+        st.warning(
+            "Falha ao consultar a planilha de mapeamento da frota. Exibindo "
+            "apenas o que o BigQuery reporta."
+        )
+        roster = None
+
+    # Última versão conhecida por validador: memória do processo Streamlit.
+    # A janela diária é mesclada ao acúmulo; quem para de pingar mantém a
+    # versão anterior (não existe OTA sem energia).
+    store = get_last_known_store()
+    state = merge_last_known_state(store, df, roster, today_sp(), STATE_PRUNE_DAYS)
+    store.clear()
+    store.update(state)
+
     try:
         fleet_truth = fetch_fleet_truth()
     except Exception:
@@ -87,12 +117,8 @@ def main() -> None:
         )
         fleet_truth = None
 
-    if df.empty:
-        st.warning("Nenhum dado retornado pela query nos últimos dias.")
-        st.stop()
-
     target_build = detect_target_build(df)
-    kpis = compute_kpis(df, target_build)
+    kpis = compute_kpis(df, target_build, state=state)
 
     render_metabar(kpis, fetched_at)
     render_kpi_cards(kpis)
@@ -128,7 +154,9 @@ def main() -> None:
             label_visibility="collapsed",
         )
 
-    inventory = build_inventory_table(df, target_build, fleet_truth=fleet_truth)
+    inventory = build_inventory_table(
+        df, target_build, fleet_truth=fleet_truth, state=state, roster=roster
+    )
     inventory = filter_inventory(inventory, selected_version, search)
 
     if inventory.empty:
