@@ -288,6 +288,8 @@ def build_inventory_table(
         if dias is not None and dias >= len(all_dates):
             unidade = "DIA" if dias == 1 else "DIAS"
             return f"{base} · OFFLINE HÁ {dias} {unidade}"
+            return f"{base} · OFFLINE HÁ {dias} {unidade}"
+
         return f"{base} · OFFLINE"
 
     inventory["status_final"] = inventory.apply(_status, axis=1)
