@@ -317,6 +317,18 @@ def build_inventory_table(
     ]
 
 
+def available_versions(inventory: pd.DataFrame) -> List[str]:
+    """Versões selecionáveis no filtro, a partir do inventário completo.
+
+    Usa o inventário (roster + estado + janela) em vez só do df da janela,
+    para não esconder do filtro uma versão "lembrada" de um validador
+    offline há mais tempo que não aparece nos últimos 3 dias.
+    """
+    versions = inventory["build_atual"].dropna().unique().tolist()
+    versions = [v for v in versions if v != "—"]
+    return sorted(versions, key=_version_key, reverse=True)
+
+
 def filter_inventory(
     inventory: pd.DataFrame, version: str | None, search: str | None
 ) -> pd.DataFrame:

@@ -12,6 +12,7 @@ from src.data import (
     today_sp,
 )
 from src.metrics import (
+    available_versions,
     build_history_series,
     build_inventory_table,
     build_today_status,
@@ -137,6 +138,10 @@ def main() -> None:
 
     st.markdown('<div style="height: 16px"></div>', unsafe_allow_html=True)
 
+    inventory = build_inventory_table(
+        df, target_build, fleet_truth=fleet_truth, state=state, roster=roster
+    )
+
     inv_left, inv_right = st.columns([3, 1.2])
     with inv_left:
         render_section_head(
@@ -145,18 +150,13 @@ def main() -> None:
         )
     with inv_right:
         st.markdown('<div style="height: 6px"></div>', unsafe_allow_html=True)
-        versions = ["Todas as versões"] + sorted(
-            df["versao_app"].dropna().unique().tolist(), reverse=True
-        )
+        versions = ["Todas as versões"] + available_versions(inventory)
         selected_version = st.selectbox(
             "Filtrar versão",
             versions,
             label_visibility="collapsed",
         )
 
-    inventory = build_inventory_table(
-        df, target_build, fleet_truth=fleet_truth, state=state, roster=roster
-    )
     inventory = filter_inventory(inventory, selected_version, search)
 
     if inventory.empty:
