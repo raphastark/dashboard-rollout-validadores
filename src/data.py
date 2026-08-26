@@ -159,6 +159,10 @@ def fetch_fleet_mapping() -> pd.DataFrame:
         raise RuntimeError("Planilha de mapeamento com formato inesperado.")
     records = []
     for r in rows[1:]:
+        if len(r) < 3:
+            # Linha parcialmente preenchida (planilha editada manualmente):
+            # ignora em vez de derrubar o roster inteiro com IndexError.
+            continue
         veiculo = r[0].strip()
         for val in (r[1].strip(), r[2].strip()):
             if veiculo and val:
