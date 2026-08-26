@@ -252,9 +252,17 @@ def build_inventory_table(
             "ultimo_ping": r.data,
         }
 
-    by_pair = {
-        (v, val): grp.set_index("data")["versao_app"].to_dict()
-        for (v, val), grp in df_deduped.groupby(["id_veiculo", "id_validador"])
+    # Agregado só por id_validador (não por par com id_veiculo): se o
+    # validador mudou de veiculo durante a janela, a atividade das datas em
+    # que ele estava no veiculo anterior não pode se perder.
+    by_validador = {
+        val: (
+            grp.assign(_vk=grp["versao_app"].apply(_version_key))
+            .sort_values("_vk")
+            .set_index("data")["versao_app"]
+            .to_dict()
+        )
+        for val, grp in df_deduped.groupby("id_validador")
     }
 
     inventory = pd.DataFrame(
@@ -271,7 +279,7 @@ def build_inventory_table(
     )
 
     def activity_for(row: pd.Series) -> str:
-        per_date = by_pair.get((row["id_veiculo"], row["id_validador"]), {})
+        per_date = by_validador.get(row["id_validador"], {})
         return "".join(_dot_for_version(per_date.get(d), ordered) for d in all_dates)
 
     inventory["atividade_recente"] = inventory.apply(activity_for, axis=1)
