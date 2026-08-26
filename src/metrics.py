@@ -286,8 +286,7 @@ def build_inventory_table(
             return base
         dias = (ref - row["_ping"]).days if row["_ping"] else None
         if dias is not None and dias >= len(all_dates):
-            unidade = "DIA" if dias == 1 else "DIAS"
-            return f"{base} · OFFLINE HÁ {dias} {unidade}"
+            unidade = "DIA" if dias == 1 else "DIAS"
             return f"{base} · OFFLINE HÁ {dias} {unidade}"
 
         return f"{base} · OFFLINE"
