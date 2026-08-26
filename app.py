@@ -8,6 +8,7 @@ from src.data import (
     fetch_fleet_mapping,
     fetch_fleet_truth,
     fetch_rollout_data,
+    get_last_known_lock,
     get_last_known_store,
     today_sp,
 )
@@ -98,9 +99,10 @@ def main() -> None:
     # A janela diária é mesclada ao acúmulo; quem para de pingar mantém a
     # versão anterior (não existe OTA sem energia).
     store = get_last_known_store()
-    state = merge_last_known_state(store, df, roster, today_sp(), STATE_PRUNE_DAYS)
-    store.clear()
-    store.update(state)
+    with get_last_known_lock():
+        state = merge_last_known_state(store, df, roster, today_sp(), STATE_PRUNE_DAYS)
+        store.clear()
+        store.update(state)
 
     try:
         fleet_truth = fetch_fleet_truth()

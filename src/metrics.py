@@ -81,9 +81,16 @@ def merge_last_known_state(
     """
     state: Dict[str, dict] = {k: dict(v) for k, v in prev_state.items()}
 
+    # Monotônico por data_ultimo_ping: só sobrescreve se o ping da janela for
+    # igual ou mais recente que o já acumulado. Evita que uma sessão com df
+    # mais antigo (concorrência entre sessões do Streamlit) regrida a memória.
     snap = _latest_snapshot_as_of(window_df, latest_date(window_df))
     for row in snap.itertuples():
-        state[str(row.id_validador)] = {
+        vid = str(row.id_validador)
+        existing_ping = _parse_iso_date((state.get(vid) or {}).get("data_ultimo_ping"))
+        if existing_ping is not None and existing_ping > row.data:
+            continue
+        state[vid] = {
             "id_veiculo": str(row.id_veiculo),
             "versao_app": str(row.versao_app),
             "data_ultimo_ping": row.data.isoformat(),

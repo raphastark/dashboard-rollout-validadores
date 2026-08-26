@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import threading
 import warnings
 from datetime import date, datetime
 from typing import Dict, Tuple
@@ -58,6 +59,17 @@ STATE_PRUNE_DAYS = 7
 def get_last_known_store() -> Dict[str, dict]:
     """Estado acumulado por id_validador: {versao_app, data_ultimo_ping, ...}."""
     return {}
+
+
+@st.cache_resource(show_spinner=False)
+def get_last_known_lock() -> threading.Lock:
+    """Lock compartilhado entre sessões para o ciclo ler-mesclar-escrever do store.
+
+    `get_last_known_store` é compartilhado por todas as sessões do Streamlit
+    no mesmo processo; sem essa serialização, reruns concorrentes podem
+    intercalar `clear()`/`update()` e perder validadores offline lembrados.
+    """
+    return threading.Lock()
 
 ROLLOUT_QUERY = """
 SELECT DISTINCT
