@@ -84,12 +84,24 @@ def merge_last_known_state(
     # Monotônico por data_ultimo_ping: só sobrescreve se o ping da janela for
     # igual ou mais recente que o já acumulado. Evita que uma sessão com df
     # mais antigo (concorrência entre sessões do Streamlit) regrida a memória.
+    # No mesmo dia, desempata pela versão mais alta (como _latest_snapshot_as_of):
+    # a query só guarda a data do ping, então uma sessão com df stale do mesmo
+    # dia poderia regredir a build lembrada sem esse desempate.
     snap = _latest_snapshot_as_of(window_df, latest_date(window_df))
     for row in snap.itertuples():
         vid = str(row.id_validador)
-        existing_ping = _parse_iso_date((state.get(vid) or {}).get("data_ultimo_ping"))
-        if existing_ping is not None and existing_ping > row.data:
-            continue
+        existing = state.get(vid) or {}
+        existing_ping = _parse_iso_date(existing.get("data_ultimo_ping"))
+        if existing_ping is not None:
+            if existing_ping > row.data:
+                continue
+            existing_version = existing.get("versao_app")
+            if (
+                existing_ping == row.data
+                and existing_version
+                and _version_key(existing_version) >= _version_key(str(row.versao_app))
+            ):
+                continue
         state[vid] = {
             "id_veiculo": str(row.id_veiculo),
             "versao_app": str(row.versao_app),

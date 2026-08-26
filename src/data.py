@@ -122,8 +122,9 @@ def fetch_fleet_truth() -> frozenset[str]:
     """Conjunto de id_validador instalados na frota agora.
 
     A API devolve, no instante da chamada, os validadores que estão transmitindo —
-    quem estiver momentaneamente offline pode ficar de fora. O resultado é usado
-    para filtrar a base do BigQuery e descartar validadores já removidos da frota.
+    quem estiver momentaneamente offline pode ficar de fora. O resultado é
+    auxiliar, não filtro: serve só para marcar `· OFFLINE` no inventário,
+    sem descartar ninguém da base do BigQuery.
     """
     url = st.secrets.get("fleet_api", {}).get("url")
     if not url:
