@@ -55,22 +55,33 @@ pip install -r requirements.txt
 ### 4. Rodar local
 
 ```bash
-streamlit run app.py
+py -m streamlit run app.py     # Windows (launcher py)
+# streamlit run app.py         # Linux/Mac
 ```
 
 Acesse http://localhost:8501.
 
 ## Uso
 
-- **KPIs do topo:** frota operante (veículos reportando hoje), % de adoção da build alvo, número de versões ativas e quantidade de validadores já atualizados.
+- **KPIs do topo:** frota operante (veículos reportando hoje), % de adoção da build alvo sobre a última versão **conhecida**, número de versões ativas e quantidade de validadores já atualizados.
 - **Build alvo:** detectada automaticamente como a versão mais alta presente no dia mais recente.
 - **Histórico de Rollout:** linha por versão ao longo dos últimos 3 dias.
 - **Status Hoje:** distribuição dos validadores por versão no dia mais recente.
-- **Inventário:** tabela com 3 bolinhas de atividade (uma por dia): 🟢 reportou na build alvo, 🟡 reportou em build anterior, ⚪ não reportou.
+- **Inventário:** tabela com 3 bolinhas de atividade (uma por dia): 🟢 reportou na build alvo, 🟡 reportou em build anterior, ⚪ não reportou. Status inclui `● Atualizado`, `○ Pendente`, `◌ Nunca reportou` e marcadores `· Offline` / `· Offline há N dias`.
 - **Filtros:** dropdown de versão e busca por `id_veiculo` ou `id_validador`.
 - **Atualização dos dados:** a query no BigQuery roda no máximo 1x a cada 24h (cache via `@st.cache_data(ttl=86400)`). Como os upgrades dos validadores são feitos pela empresa de bilhetagem na madrugada, não há ganho em consultar com mais frequência — e evita custo desnecessário no BigQuery.
+- **Memória de última versão:** a última versão conhecida de cada validador fica acumulada na memória do próprio Streamlit (`@st.cache_resource`) e é atualizada a cada consulta diária — veículo em manutenção longa (sem ping) continua no dashboard com a versão que tinha ao parar de reportar, pois versão não muda sem energia. O roster oficial vem da planilha "mapeamento dos validadores" (uso aditivo: quem nunca reportou aparece como `Nunca reportou`).
 
 ## Changelog
+
+### [2026-08-21] — Validadores em manutenção longa não somem mais
+
+- **Memória de última versão conhecida:** o estado de cada validador (versão + último ping) fica acumulado na memória do próprio Streamlit (`@st.cache_resource`) e é mesclado com a consulta diária. Como a versão de um validador não muda sem energia (não existe OTA desligado), quem para de pingar — ex.: veículo em manutenção pesada com a chave geral desligada — continua no dashboard com a versão que tinha, em vez de sumir ao sair da janela de 3 dias. Custo BigQuery inalterado: mesma query diária, nada de lookback.
+- **Escopo "daqui para a frente":** a memória começa a acumular a partir do deploy desta versão. Validadores que já estavam silenciosos antes dela aparecem como `Nunca reportou` até voltarem a pingar; um redeploy futuro reseta o acúmulo, que recomeça da janela do dia.
+- **Roster da frota:** planilha "mapeamento dos validadores" (CSV público) usada de forma **aditiva** — validadores mapeados que nunca reportaram aparecem com status `Nunca reportou`. Quem pinga nunca é removido (validador fora do veículo reporta id 99999, já filtrado pela query).
+- **KPIs sobre o estado conhecido:** % de adoção e meta atingida contam validadores em manutenção longa com sua última versão conhecida. Frota operante continua sendo quem reportou na janela.
+- **Inventário:** nova coluna `Último Ping` e marcador `· Offline há N dias` para quem está fora da janela de exibição.
+- **Poda:** entradas fora do roster sem ping há mais de 7 dias são descartadas (equipamento trocado/enviado à Jaé não volta a reportar; a janela de 3 dias dá margem extra para a planilha ser atualizada).
 
 ### [2026-05-31] — Contagem fiel de validadores offline
 
@@ -130,9 +141,11 @@ Primeira rodada de melhorias visuais e de UX após o commit inicial:
 ```
 app.py                    # entry-point Streamlit
 src/
-  data.py                 # cliente BQ + query + cache
-  metrics.py              # cálculo dos KPIs e tabelas
+  data.py                 # cliente BQ + query + cache + roster + memória de estado
+  metrics.py              # cálculo dos KPIs, merge de estado e tabelas
   ui.py                   # componentes visuais
+static/
+  styles.css              # estilo custom (injetado via inject_styles)
 .streamlit/
   config.toml             # tema
   secrets.toml.example    # template da Service Account

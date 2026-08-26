@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import csv
+import io
+import threading
 import warnings
-from datetime import datetime
-from typing import Tuple
+from datetime import date, datetime
+from typing import Dict, Tuple
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -26,6 +29,47 @@ DEFAULT_WINDOW_DAYS = 2
 FLEET_API_TIMEOUT = 15
 FLEET_TRUTH_TTL = 24 * 60 * 60
 SAO_PAULO_TZ = ZoneInfo("America/Sao_Paulo")
+
+# Roster oficial da frota: planilha "mapeamento dos validadores" publicada
+# como CSV (a mesma usada pelo dashboard de temperatura). Uso ADITIVO: só
+# adiciona validadores que nunca reportaram; nunca remove quem o BigQuery vê.
+MAPPING_CSV_URL = (
+    "https://docs.google.com/spreadsheets/d/e/"
+    "2PACX-1vTTVotmQMdtPhZ610EXnwE89MHFdWu31XpQVcU1XEapXiW1F9dUy_"
+    "b7C4cyJhBTdGj3YdKLzcpIxx0i/pub?output=csv"
+)
+
+# Memória "última versão conhecida por validador": vive no próprio processo
+# do Streamlit (@st.cache_resource) e é mesclada com a janela diária. Como a
+# versão de um validador sem energia não muda (não existe OTA desligado),
+# quem para de pingar — veículo em manutenção pesada — mantém a última versão
+# em vez de sumir do dashboard ao sair da janela de 3 dias.
+#
+# Volátil por design: um redeploy reseta o acúmulo, que recomeça da janela do
+# dia. Não é cache de consulta — o botão "Atualizar" NÃO deve limpá-la.
+#
+# Serial fora do roster que para de pingar é equipamento trocado/enviado à
+# Jaé: sai da memória após 7 dias sem ping (e a janela de 3 dias ainda o
+# mostra por mais alguns). Margem curta evita acúmulo de "fantasmas"
+# PENDENTE distorcendo a adoção — trocas são frequentes (~26 em 4 meses).
+STATE_PRUNE_DAYS = 7
+
+
+@st.cache_resource(show_spinner=False)
+def get_last_known_store() -> Dict[str, dict]:
+    """Estado acumulado por id_validador: {versao_app, data_ultimo_ping, ...}."""
+    return {}
+
+
+@st.cache_resource(show_spinner=False)
+def get_last_known_lock() -> threading.Lock:
+    """Lock compartilhado entre sessões para o ciclo ler-mesclar-escrever do store.
+
+    `get_last_known_store` é compartilhado por todas as sessões do Streamlit
+    no mesmo processo; sem essa serialização, reruns concorrentes podem
+    intercalar `clear()`/`update()` e perder validadores offline lembrados.
+    """
+    return threading.Lock()
 
 ROLLOUT_QUERY = """
 SELECT DISTINCT
@@ -78,8 +122,9 @@ def fetch_fleet_truth() -> frozenset[str]:
     """Conjunto de id_validador instalados na frota agora.
 
     A API devolve, no instante da chamada, os validadores que estão transmitindo —
-    quem estiver momentaneamente offline pode ficar de fora. O resultado é usado
-    para filtrar a base do BigQuery e descartar validadores já removidos da frota.
+    quem estiver momentaneamente offline pode ficar de fora. O resultado é
+    auxiliar, não filtro: serve só para marcar `· OFFLINE` no inventário,
+    sem descartar ninguém da base do BigQuery.
     """
     url = st.secrets.get("fleet_api", {}).get("url")
     if not url:
@@ -97,6 +142,48 @@ def fetch_fleet_truth() -> frozenset[str]:
     )
 
 
+@st.cache_data(ttl=FLEET_TRUTH_TTL, show_spinner="Consultando mapeamento da frota...")
+def fetch_fleet_mapping() -> pd.DataFrame:
+    """Roster da frota a partir da planilha de mapeamento publicada como CSV.
+
+    Retorna DataFrame com colunas id_veiculo e id_validador (2 linhas por
+    veículo). Falha com RuntimeError se o formato mudar — o chamador degrada
+    para o comportamento só-BigQuery.
+    """
+    resp = requests.get(MAPPING_CSV_URL, timeout=FLEET_API_TIMEOUT)
+    resp.raise_for_status()
+    rows = [
+        r for r in csv.reader(io.StringIO(resp.content.decode("utf-8")))
+        if any(c.strip() for c in r)
+    ]
+    if len(rows) < 2 or len(rows[0]) < 3:
+        raise RuntimeError("Planilha de mapeamento com formato inesperado.")
+    records = []
+    for r in rows[1:]:
+        if len(r) < 3:
+            # Linha parcialmente preenchida (planilha editada manualmente):
+            # ignora em vez de derrubar o roster inteiro com IndexError.
+            continue
+        veiculo = r[0].strip()
+        for val in (r[1].strip(), r[2].strip()):
+            if veiculo and val:
+                records.append({"id_veiculo": veiculo, "id_validador": val})
+    mapping = pd.DataFrame(records, columns=["id_veiculo", "id_validador"])
+    if mapping.empty or mapping["id_validador"].duplicated().any():
+        raise RuntimeError(
+            "Planilha de mapeamento vazia ou com validadores duplicados."
+        )
+    return mapping
+
+
+def today_sp() -> date:
+    """Data de referência 'agora' no fuso do dashboard."""
+    return datetime.now(SAO_PAULO_TZ).date()
+
+
 def clear_all_caches() -> None:
+    # NOTA: o store de última versão conhecida (get_last_known_store) é
+    # memória acumulada, não cache de consulta — não deve ser limpo aqui.
     fetch_rollout_data.clear()
     fetch_fleet_truth.clear()
+    fetch_fleet_mapping.clear()

@@ -247,21 +247,30 @@ def render_today_chart(today: pd.DataFrame, target_build: str) -> None:
     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 
+def _render_status(status: str) -> str:
+    base, *extra = status.split(" · ")
+    icon = {
+        "ATUALIZADO": "● Atualizado",
+        "PENDENTE": "○ Pendente",
+        "NUNCA REPORTOU": "◌ Nunca reportou",
+    }.get(base, base)
+    suffix = " · " + " · ".join(e.capitalize() for e in extra) if extra else ""
+    return icon + suffix
+
+
 def render_inventory(inventory: pd.DataFrame) -> None:
     display = inventory.rename(
         columns={
             "id_veiculo": "Veículo",
             "id_validador": "ID Validador",
             "build_atual": "Build Atual",
+            "ultimo_ping": "Último Ping",
             "atividade_recente": "Atividade Recente",
             "status_final": "Status Final",
         }
     )
     display["Veículo"] = "#" + display["Veículo"].astype(str)
-    display["Status Final"] = display["Status Final"].apply(
-        lambda v: ("● Atualizado" if v.startswith("ATUALIZADO") else "○ Pendente")
-        + (" · Offline" if "OFFLINE" in v else "")
-    )
+    display["Status Final"] = display["Status Final"].apply(_render_status)
     st.dataframe(
         display,
         width="stretch",
@@ -270,6 +279,7 @@ def render_inventory(inventory: pd.DataFrame) -> None:
             "Veículo": st.column_config.TextColumn(width="small"),
             "ID Validador": st.column_config.TextColumn(width="medium"),
             "Build Atual": st.column_config.TextColumn(width="small"),
+            "Último Ping": st.column_config.TextColumn(width="small"),
             "Atividade Recente": st.column_config.TextColumn(width="medium"),
             "Status Final": st.column_config.TextColumn(width="small"),
         },
