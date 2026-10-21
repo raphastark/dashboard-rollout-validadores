@@ -6,20 +6,6 @@ secondaryBackgroundColor = "#1B2433"
 textColor = "#ECEEF2"
 font = "sans serif"
 
-# Modos claro/escuro selecionaveis pelo menu do Streamlit (tokens do
-# Monitoramento de Frota). O CSS acompanha o modo ativo (ver src/ui.py).
-[theme.light]
-primaryColor = "#1F9D63"
-backgroundColor = "#F3F4F7"
-secondaryBackgroundColor = "#FFFFFF"
-textColor = "#1A1D24"
-
-[theme.dark]
-primaryColor = "#58D19B"
-backgroundColor = "#141D2B"
-secondaryBackgroundColor = "#1B2433"
-textColor = "#ECEEF2"
-
 [server]
 headless = true
 
