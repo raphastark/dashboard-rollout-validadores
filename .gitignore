@@ -27,3 +27,9 @@ Thumbs.db
 *.parquet
 scratch/
 .tmp/
+
+# Configuracoes locais do Claude Code (permissoes por maquina)
+.claude/settings.local.json
+
+# Pacote de handoff de design (referencia local; assets ja copiados para static/)
+design_handoff_rollout_validadores/

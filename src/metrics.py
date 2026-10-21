@@ -21,6 +21,9 @@ class KPIs:
     meta_atingida: int
     target_build: str
     reference_date: date
+    # Denominador da adoção (validadores com versão conhecida). Exposto só
+    # para a UI exibir "N de M"; não altera nenhum cálculo.
+    total_conhecido: int = 0
 
 
 def _version_key(v: str) -> Tuple[int, int, int, str]:
@@ -154,6 +157,7 @@ def compute_kpis(
             meta_atingida=on_target,
             target_build=target_build,
             reference_date=ref,
+            total_conhecido=total_validadores,
         )
 
     on_target_df = snapshot[snapshot["versao_app"] == target_build]
@@ -169,6 +173,7 @@ def compute_kpis(
         meta_atingida=int(on_target_validadores),
         target_build=target_build,
         reference_date=ref,
+        total_conhecido=int(total_validadores),
     )
 
 

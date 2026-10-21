@@ -63,16 +63,40 @@ Acesse http://localhost:8501.
 
 ## Uso
 
-- **KPIs do topo:** frota operante (veículos reportando hoje), % de adoção da build alvo sobre a última versão **conhecida**, número de versões ativas e quantidade de validadores já atualizados.
+A página segue a moldura do Monitoramento de Frota, de cima para baixo:
+
+- **Cabeçalho:** marca Novacap, título e três selos de fonte de dados. **BigQuery SMTR** mostra a data de referência e o horário da consulta. **API da frota** mostra o horário do ciclo de consulta. **Mapeamento** mostra o tamanho do roster. O ponto fica verde quando a fonte está operacional, vermelho quando o BigQuery está indisponível e âmbar quando uma fonte auxiliar falha.
+- **Atualizar:** força nova consulta ao BigQuery, à API da frota e à planilha. Não limpa a memória de última versão conhecida.
+- **Avisos:** só aparecem quando uma fonte falha. Falha do BigQuery bloqueia a página; falha da API da frota ou da planilha só tira o marcador correspondente.
+- **Adoção da build alvo (manchete):** % de validadores na build alvo sobre a última versão **conhecida**, "N de M validadores", barra segmentada por versão e, com 2+ dias de histórico, "Última madrugada: +X validadores". Validadores mapeados que nunca reportaram aparecem à parte na legenda.
+- **Indicadores:** frota operante (veículos que reportaram na janela de 3 dias), pendentes de atualização (versão conhecida abaixo da alvo) e versões ativas.
 - **Build alvo:** detectada automaticamente como a versão mais alta presente no dia mais recente.
-- **Histórico de Rollout:** linha por versão ao longo dos últimos 3 dias.
-- **Status Hoje:** distribuição dos validadores por versão no dia mais recente.
-- **Inventário:** tabela com 3 bolinhas de atividade (uma por dia): 🟢 reportou na build alvo, 🟡 reportou em build anterior, ⚪ não reportou. Status inclui `● Atualizado`, `○ Pendente`, `◌ Nunca reportou` e marcadores `· Offline` / `· Offline há N dias`.
-- **Filtros:** dropdown de versão e busca por `id_veiculo` ou `id_validador`.
+- **Cores das versões:** por papel. Build alvo em verde, versão imediatamente anterior em azul, mais antigas em cinza. As mesmas cores valem para a barra, os gráficos e os blocos do inventário.
+- **Histórico do rollout:** barras empilhadas por dia nos últimos 3 dias, com a build alvo na base e o % na alvo no topo de cada barra.
+- **Distribuição por versão:** último estado conhecido por validador na janela consultada, com valor absoluto e %.
+- **Inventário:** barra com filtro por status (Todos, Atualizados, Pendentes, Nunca reportou, Offline — contagens sobre o inventário completo), filtro de versão e busca por `id_veiculo` ou `id_validador`. A tabela mostra 3 blocos de atividade, um por dia, pintados com a cor da versão reportada naquele dia; só o contorno quando o validador não reportou. Status: `Atualizado`, `Pendente`, `Nunca reportou`, com sufixos `· Offline` / `· Offline há N dias` em âmbar.
+- **Tema:** escuro por padrão, com modo claro pelo menu do Streamlit (Settings → Theme). O tema inicial segue o do sistema operacional, e a troca reflete na hora, sem recarregar os dados.
 - **Atualização dos dados:** a query no BigQuery roda no máximo 1x a cada 24h (cache via `@st.cache_data(ttl=86400)`). Como os upgrades dos validadores são feitos pela empresa de bilhetagem na madrugada, não há ganho em consultar com mais frequência — e evita custo desnecessário no BigQuery.
 - **Memória de última versão:** a última versão conhecida de cada validador fica acumulada na memória do próprio Streamlit (`@st.cache_resource`) e é atualizada a cada consulta diária — veículo em manutenção longa (sem ping) continua no dashboard com a versão que tinha ao parar de reportar, pois versão não muda sem energia. O roster oficial vem da planilha "mapeamento dos validadores" (uso aditivo: quem nunca reportou aparece como `Nunca reportou`).
 
 ## Changelog
+
+### [2026-10-21] — Identidade visual Novacap
+
+Mudança **somente de apresentação** (`app.py`, `src/ui.py`, `static/styles.css`, `.streamlit/config.toml`). **Nenhuma mudança de dados ou métricas:** query, janela de 3 dias, TTL de 24h, memória de última versão conhecida, roster, API da frota como marcador auxiliar, detecção da build alvo e significado dos status continuam idênticos. Em `src/metrics.py` entrou apenas o campo `total_conhecido` no dataclass `KPIs` (o denominador da adoção que já era calculado), sem alterar nenhum cálculo.
+
+- **Moldura do Monitoramento de Frota:** cabeçalho `#293046` com fio laranja `#E87A3E`, boneco e letras Novacap (em `static/`), título "Rollout de Validadores" (também no `page_title`; o `page_icon` passa a ser o boneco) e três selos de fonte de dados — BigQuery SMTR, API da frota e Mapeamento — com ponto verde (operacional), vermelho (BigQuery indisponível) ou âmbar (fonte auxiliar indisponível). Saem o ícone de pulso, o eyebrow "SMTR · Rollout · Ao Vivo" e a metabar.
+- **Tema:** escuro por padrão, com modo claro pelo menu do Streamlit (`[theme.light]` / `[theme.dark]`); tokens de cor, raios e espaçamentos iguais aos do outro painel. Fontes Barlow, Barlow Condensed e IBM Plex Mono substituem Geist e JetBrains Mono.
+- **Adoção como manchete:** card com o % da build alvo, "N de M validadores com versão conhecida", barra segmentada por versão e legenda; com 2+ dias de histórico mostra "Última madrugada: +X validadores" (em texto, sem seta). Validadores mapeados que nunca reportaram aparecem na legenda.
+- **Indicadores neutros:** Frota operante, Pendentes de atualização e Versões ativas, sem ícones, chips coloridos ou gradientes. O card "Meta atingida" saiu porque repetia o número da manchete.
+- **Cores das versões por papel:** alvo verde, versão anterior azul, mais antigas cinza (substituem a paleta de 7 cores por índice). Laranja fica restrito à marca.
+- **Histórico do rollout:** barras empilhadas por dia (alvo na base) com o % da alvo no topo, no lugar das linhas.
+- **Distribuição por versão:** barras horizontais em HTML sobre trilho de 100%, com valor absoluto e %, e rodapé explicando a detecção da build alvo e a contagem de offline.
+- **Inventário:** busca saiu do cabeçalho e foi para a barra do inventário, junto com o novo filtro por status (Todos, Atualizados, Pendentes, Nunca reportou, Offline — contagens calculadas antes da busca e do filtro de versão) e o filtro de versão existente. Tabela HTML com cabeçalho fixo; atividade em blocos coloridos com a cor da versão de cada dia (substituem as bolinhas emoji); status com ponto colorido e sufixo de offline em âmbar.
+- **Avisos:** só aparecem quando uma fonte falha, como card neutro com ponto âmbar (sem o fundo amarelo do Streamlit). Falha do BigQuery continua bloqueante (`st.error` + `st.stop`), com os tokens do tema. O modo de manutenção usa o mesmo cabeçalho e uma mensagem neutra.
+- **Troca de tema instantânea:** os tokens de cor usam `light-dark()` e seguem o `color-scheme` que o Streamlit aplica à página, então alternar claro/escuro pelo menu reflete na hora, inclusive no gráfico do histórico. O tema inicial segue o do sistema operacional.
+- **Telas estreitas:** cabeçalho, manchete e barra do inventário quebram linha em vez de cortar rótulos.
+- **README e repositório:** seção "Uso" reescrita para a nova interface. `.claude/settings.local.json` (permissões locais do Claude Code) saiu do versionamento e, junto com a pasta `design_handoff_rollout_validadores/` (referência local do handoff), entrou no `.gitignore`.
 
 ### [2026-08-21] — Validadores em manutenção longa não somem mais
 
@@ -146,6 +170,7 @@ src/
   ui.py                   # componentes visuais
 static/
   styles.css              # estilo custom (injetado via inject_styles)
+  novacap-*.png           # boneco e letras Novacap (cabeçalho e page_icon)
 .streamlit/
   config.toml             # tema
   secrets.toml.example    # template da Service Account
