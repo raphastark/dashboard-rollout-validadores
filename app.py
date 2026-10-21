@@ -24,76 +24,123 @@ from src.metrics import (
     merge_last_known_state,
 )
 from src.ui import (
+    bigquery_source,
+    filter_by_status,
+    fleet_source,
     inject_styles,
-    render_history_chart,
-    render_inventory,
-    render_kpi_cards,
-    render_masthead,
-    render_metabar,
-    render_section_head,
-    render_today_chart,
+    known_version_counts,
+    last_night_upgrades,
+    mapping_source,
+    never_reported_count,
+    page_icon,
+    render_distribution_card,
+    render_header,
+    render_history_card,
+    render_inventory_filters,
+    render_inventory_table,
+    render_notice,
+    render_overview,
+    status_counts,
+    version_colors,
 )
 
 st.set_page_config(
-    page_title="Dashboard de Versões Operacionais",
-    page_icon="\U0001F68C",
+    page_title="Rollout de Validadores",
+    page_icon=page_icon(),
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-maintenance = st.secrets.get("app", {}).get("maintenance_mode", False)
-if maintenance:
-    st.title("🔧 Em manutenção")
-    st.info("Este dashboard está temporariamente indisponível.")
-    st.stop()
-    
+
 def main() -> None:
     inject_styles()
 
-    header_left, header_right = st.columns([7, 5])
-    with header_left:
-        render_masthead()
-    with header_right:
-        st.markdown('<div class="search-pad"></div>', unsafe_allow_html=True)
-        search_col, refresh_col = st.columns([5, 1])
-        with search_col:
-            search = st.text_input(
-                "Busca rápida",
-                placeholder="Buscar por ônibus ou serial...",
-                label_visibility="collapsed",
-                key="search",
-            )
-        with refresh_col:
-            if st.button(
-                "Atualizar",
-                help="Atualizar dados agora (BigQuery + API da frota)",
-                use_container_width=True,
-            ):
-                clear_all_caches()
-                st.rerun()
+    maintenance = st.secrets.get("app", {}).get("maintenance_mode", False)
+    if maintenance:
+        render_header()
+        render_notice(
+            "Painel em manutenção.",
+            "Os dados voltam a ser exibidos assim que a manutenção terminar.",
+            tone="neutral",
+        )
+        st.stop()
 
+    # --- Fontes de dados (mesmos try/except de antes; o resultado alimenta
+    # os selos do cabeçalho e os avisos). ---
+    bq_error: Exception | None = None
     try:
         df, fetched_at = fetch_rollout_data()
     except Exception as exc:
-        st.error(
-            "Falha ao consultar o BigQuery. Verifique se .streamlit/secrets.toml "
-            "está configurado e se a Service Account tem as roles necessárias."
-        )
-        st.exception(exc)
-        st.stop()
-
-    if df.empty:
-        st.warning("Nenhum dado retornado pela query nos últimos dias.")
-        st.stop()
+        df, fetched_at, bq_error = None, None, exc
 
     try:
         roster = fetch_fleet_mapping()
     except Exception:
-        st.warning(
-            "Falha ao consultar a planilha de mapeamento da frota. Exibindo "
-            "apenas o que o BigQuery reporta."
-        )
         roster = None
+
+    fleet_empty = False
+    try:
+        fleet_truth = fetch_fleet_truth()
+    except Exception:
+        fleet_truth = None
+    if fleet_truth is not None and not fleet_truth:
+        fleet_empty = True
+        fleet_truth = None
+
+    has_data = df is not None and not df.empty
+    render_header(
+        [
+            bigquery_source(
+                bq_error is None,
+                latest_date(df) if has_data else None,
+                fetched_at,
+            ),
+            fleet_source(fleet_truth is not None, fetched_at),
+            mapping_source(roster is not None, len(roster) if roster is not None else 0),
+        ]
+    )
+
+    # on_click roda ANTES do rerun disparado pelo clique: os caches são
+    # limpos antes das consultas acima, então o rerun já busca dados novos
+    # uma única vez (sem st.rerun extra, sem consulta dupla ao BigQuery).
+    with st.container(key="refresh_row"):
+        st.button(
+            "Atualizar",
+            key="refresh",
+            help="Atualizar dados agora (BigQuery + API da frota)",
+            on_click=clear_all_caches,
+        )
+
+    if bq_error is not None:
+        st.error(
+            "Falha ao consultar o BigQuery. Verifique se .streamlit/secrets.toml "
+            "está configurado e se a Service Account tem as roles necessárias."
+        )
+        st.exception(bq_error)
+        st.stop()
+
+    if not has_data:
+        render_notice(
+            "Nenhum dado retornado.",
+            "A consulta ao BigQuery não trouxe registros nos últimos dias.",
+        )
+        st.stop()
+
+    if roster is None:
+        render_notice(
+            "Planilha de mapeamento indisponível.",
+            "Exibindo apenas o que o BigQuery reporta.",
+        )
+    if fleet_empty:
+        render_notice(
+            "API da frota retornou vazia.",
+            "O inventário segue sem o marcador de offline.",
+        )
+    elif fleet_truth is None:
+        render_notice(
+            "API da frota indisponível.",
+            "O inventário segue sem o marcador de offline.",
+        )
 
     # Última versão conhecida por validador: memória do processo Streamlit.
     # A janela diária é mesclada ao acúmulo; quem para de pingar mantém a
@@ -104,67 +151,42 @@ def main() -> None:
         store.clear()
         store.update(state)
 
-    try:
-        fleet_truth = fetch_fleet_truth()
-    except Exception:
-        st.warning(
-            "Falha ao consultar a API da frota em tempo real. Exibindo dados sem "
-            "indicação de status online/offline dos validadores."
-        )
-        fleet_truth = None
-
-    if fleet_truth is not None and not fleet_truth:
-        st.warning(
-            "API da frota retornou vazia. Exibindo dados sem indicação de "
-            "status online/offline dos validadores."
-        )
-        fleet_truth = None
-
     target_build = detect_target_build(df)
     kpis = compute_kpis(df, target_build, state=state)
-
-    render_metabar(kpis, fetched_at)
-    render_kpi_cards(kpis)
-
-    chart_left, chart_right = st.columns(2, gap="medium")
-    with chart_left:
-        render_section_head("Histórico de Rollout", "Últimos 3 dias")
-        render_history_chart(build_history_series(df))
-    with chart_right:
-        render_section_head("Status Hoje", latest_date(df).strftime("%d/%m/%Y"))
-        render_today_chart(build_today_status(df), target_build)
-        st.caption(
-            f"Último estado conhecido por validador na janela consultada "
-            f"(últimos 3 dias), até o dia {latest_date(df).strftime('%d/%m/%Y')}."
-        )
-
-    st.markdown('<div style="height: 16px"></div>', unsafe_allow_html=True)
-
     inventory = build_inventory_table(
         df, target_build, fleet_truth=fleet_truth, state=state, roster=roster
     )
+    history = build_history_series(df)
+    today_status = build_today_status(df)
 
-    inv_left, inv_right = st.columns([3, 1.2])
-    with inv_left:
-        render_section_head(
-            "Inventário Operacional Ativo",
-            f"Status · {kpis.reference_date.strftime('%d/%m/%Y')}",
+    colors = version_colors(
+        target_build,
+        [rec.get("versao_app") for rec in state.values()]
+        + df["versao_app"].tolist()
+        + inventory["build_atual"].tolist(),
+    )
+
+    counts = known_version_counts(state, today_status)
+    render_overview(
+        kpis,
+        counts,
+        colors,
+        never_reported_count(inventory),
+        last_night_upgrades(df, target_build),
+    )
+
+    chart_left, chart_right = st.columns(2, gap="small")
+    with chart_left:
+        render_history_card(history, target_build, colors)
+    with chart_right:
+        render_distribution_card(counts, target_build, colors, latest_date(df))
+
+    with st.container(key="inventory_card"):
+        status, version, search = render_inventory_filters(
+            status_counts(inventory), available_versions(inventory)
         )
-    with inv_right:
-        st.markdown('<div style="height: 6px"></div>', unsafe_allow_html=True)
-        versions = ["Todas as versões"] + available_versions(inventory)
-        selected_version = st.selectbox(
-            "Filtrar versão",
-            versions,
-            label_visibility="collapsed",
-        )
-
-    inventory = filter_inventory(inventory, selected_version, search)
-
-    if inventory.empty:
-        st.info("Nenhum registro com os filtros atuais.")
-    else:
-        render_inventory(inventory)
+        shown = filter_by_status(filter_inventory(inventory, version, search), status)
+        render_inventory_table(shown, len(inventory), df, target_build, colors)
 
 
 if __name__ == "__main__":

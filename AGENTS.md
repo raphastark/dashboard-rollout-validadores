@@ -29,27 +29,32 @@ Fluxo em camadas, uma responsabilidade por módulo — manter a separação:
 - `app.py` — entry-point: page config, layout (`st.columns`) e orquestração.
   Não calcula nada nem renderiza componente complexo aqui. Contém o modo de
   manutenção (secret `[app].maintenance_mode`) e o botão "Atualizar"
-  (`clear_all_caches()` + `st.rerun`).
+  (`on_click=clear_all_caches`, sem `st.rerun`).
 - `src/data.py` — acesso a dados: BigQuery (`fetch_rollout_data`), API da
   frota em tempo real (`fetch_fleet_truth`, lê `[fleet_api].url`), roster da
   planilha de mapeamento (`fetch_fleet_mapping`, CSV público, uso ADITIVO:
   só adiciona quem nunca reportou, nunca remove quem pinga) e memória de
-  última versão conhecida (`get_last_known_store`, `@st.cache_resource` +
-  `STATE_PRUNE_DAYS`). Query parametrizada, credenciais e cache
-  (`@st.cache_resource` no client, `@st.cache_data` nos dados, TTL 24h).
-  Constantes (PROJECT_ID, ID_OPERADORA, prefixos de veículo, janela de dias,
-  fuso) vivem aqui.
+  última versão conhecida (`get_last_known_store` + `get_last_known_lock`,
+  ambos `@st.cache_resource`, e `STATE_PRUNE_DAYS`) — o lock serializa o
+  ciclo ler-mesclar-escrever entre sessões concorrentes do Streamlit. Query
+  parametrizada, credenciais e cache (`@st.cache_resource` no client,
+  `@st.cache_data` nos dados, TTL 24h). Constantes (PROJECT_ID, ID_OPERADORA,
+  prefixos de veículo, janela de dias, fuso) vivem aqui.
 - `src/metrics.py` — transformações puras de pandas: KPIs (adoção sobre o
   estado conhecido), série histórica (snapshot _as-of_ por validador), merge
   incremental do estado (`merge_last_known_state`), inventário (universo =
-  roster < estado < janela; marcadores `· OFFLINE` / `· OFFLINE HÁ N DIAS` /
-  `NUNCA REPORTOU`) e filtro. **Não importar `streamlit` aqui** — é testável
-  puro.
+  roster < estado < janela; marcadores `· OFFLINE` / `· OFFLINE HÁ N DIA(S)` /
+  `NUNCA REPORTOU`), `available_versions` (filtro de versão derivado do
+  inventário completo, não só da janela) e filtro. **Não importar
+  `streamlit` aqui** — é testável puro.
 - `src/ui.py` — componentes visuais: HTML/CSS injetado, cards, gráficos
-  Plotly. Carrega `static/styles.css` via `inject_styles()`.
-- `static/styles.css` — todo o estilo custom (classes BEM: `kpi__value`,
-  `masthead__title`...). Preferir CSS aqui a inline no Python.
-- `.streamlit/` — `config.toml` (tema claro, verde #0F9D70) e
+  Plotly. Carrega `static/styles.css` via `inject_styles()`, que injeta antes
+  os tokens do modo ativo (`THEMES`, escolhido por `st.context.theme`).
+  Cores de versão por papel em `version_colors` (alvo/anterior/antigas).
+- `static/styles.css` — todo o estilo custom (classes BEM: `brandbar__title`,
+  `card__title`, `inv__foot`...). Preferir CSS aqui a inline no Python.
+- `.streamlit/` — `config.toml` (tema escuro padrão + `[theme.light]` /
+  `[theme.dark]` com os tokens do Monitoramento de Frota) e
   `secrets.toml.example` (templates das seções `[gcp_service_account]` e
   `[fleet_api]`).
 
@@ -62,8 +67,19 @@ Fluxo em camadas, uma responsabilidade por módulo — manter a separação:
   (`src/metrics.py`), nunca por string.
 - Identificadores de código em inglês; campos de domínio/KPIs podem ficar em
   português (`frota_operante`), como o restante do repo.
-- Fontes dos gráficos: Geist (texto) e JetBrains Mono (números/eixos);
-  cores centrais no `PALETTE` de `src/ui.py` e no tema do `config.toml`.
+- Identidade Novacap (mesma moldura e tokens do Monitoramento de Frota):
+  fontes Barlow (interface/texto), Barlow Condensed (números grandes) e IBM
+  Plex Mono (versões, seriais, datas, eixos) — tanto no `styles.css` quanto em
+  `FONT_UI`/`FONT_NUMBER`/`FONT_MONO` de `src/ui.py`. Tokens de cor em `THEMES`
+  (`src/ui.py`) e no `config.toml`. Cores de versão por papel: alvo verde,
+  anterior azul, antigas cinza. Laranja `#E87A3E` só na marca (fio do
+  cabeçalho) — nunca em versão, gráfico, botão ou alerta. Logos em `static/`.
+- Streamlit ≥ 1.61 (piso do `requirements.txt` = versão testada): a UI usa
+  `[theme.light]`/`[theme.dark]`, `width="stretch"`, `st.context.theme`,
+  `st.container(key=...)` e `st.segmented_control`. Não baixar o piso.
+- Botões que limpam cache usam `on_click` (roda antes do rerun); nunca
+  limpar + `st.rerun()` depois de já ter consultado, senão o BigQuery é
+  consultado duas vezes.
 
 ## Gotchas
 
@@ -120,4 +136,4 @@ Ler o `README.md` — setup completo das credenciais, contexto de uso dos
 KPIs/filtros e principalmente a seção **Changelog**, que documenta decisões
 deliberadas de métricas (as-of, offline como marcador) — antes de alterar
 `src/data.py`, `src/metrics.py` ou o significado de status/KPIs
-(`ATUALIZADO`/`PENDENTE`, `· OFFLINE`, build alvo, bolinhas de atividade).
+(`ATUALIZADO`/`PENDENTE`, `· OFFLINE`, build alvo, blocos de atividade).
