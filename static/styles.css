@@ -517,6 +517,20 @@
   flex: 0 0 auto !important;
   width: auto !important;
 }
+/* O controle de status nunca passa da largura do card: em telas estreitas
+   rola na horizontal em vez de cortar as últimas opções. */
+.st-key-inventory_card [data-testid="stColumn"]:has(.st-key-status_filter) {
+  max-width: 100%;
+}
+.st-key-status_filter,
+.st-key-status_filter [data-testid="stButtonGroup"] {
+  max-width: 100%;
+}
+.st-key-status_filter [role="radiogroup"] {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
 .st-key-inventory_card [data-testid="stColumn"]:nth-child(1) {
   margin-right: 14px;
 }
@@ -677,7 +691,7 @@ table.inv td:last-child {
   padding-right: 22px;
 }
 table.inv tbody tr:hover td {
-  background: var(--track);
+  background: var(--row-hover);
 }
 table.inv td.mono {
   font-size: 12px;
@@ -686,7 +700,7 @@ table.inv td.mono {
   font-weight: 600;
 }
 .inv__build--target {
-  color: var(--version-target);
+  color: var(--version-target-text);
 }
 .inv__build--none {
   color: var(--muted);

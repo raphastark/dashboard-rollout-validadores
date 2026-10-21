@@ -13,11 +13,9 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from .metrics import (
-    ACTIVITY_DOTS,
-    NO_ACTIVITY_DOT,
     KPIs,
     _dedupe_max_version_per_day,
-    _ordered_versions,
+    _latest_snapshot_as_of,
     _version_key,
 )
 
@@ -57,6 +55,8 @@ THEMES: Dict[str, Dict[str, str]] = {
         "warn": "#E8A33D",
         "warn-text": "#E8A33D",
         "warn-border": "#2A3446",
+        "version-target-text": "#58D19B",
+        "row-hover": "#222B3B",
         "critical": "#F05A5A",
         "version-target": "#58D19B",
         "version-previous": "#7C93C3",
@@ -76,8 +76,10 @@ THEMES: Dict[str, Dict[str, str]] = {
         "value": "#2B3245",
         "segment-active": "#E3E6EC",
         "warn": "#B7791F",
-        "warn-text": "#B7791F",
+        "warn-text": "#8F5E12",
         "warn-border": "#E8C98E",
+        "version-target-text": "#177A4C",
+        "row-hover": "#F3F4F7",
         "critical": "#F05A5A",
         "version-target": "#1F9D63",
         "version-previous": "#5B74A8",
@@ -340,16 +342,23 @@ def never_reported_count(inventory: pd.DataFrame) -> int:
     return int((inventory["build_atual"] == "—").sum())
 
 
-def last_night_delta(history: pd.DataFrame, target_build: str) -> Optional[int]:
-    """Variação da build alvo entre os dois últimos dias da série histórica."""
-    if history.empty:
+def last_night_upgrades(df: pd.DataFrame, target_build: str) -> Optional[int]:
+    """Validadores que passaram para a build alvo entre os dois últimos dias.
+
+    Compara o snapshot as-of de cada validador no penúltimo e no último dia
+    da janela e conta só as transições "outra versão -> alvo". Validador que
+    aparece pela primeira vez já na alvo não conta (não se sabe quando
+    atualizou), e entradas/saídas da janela não geram falsos +1/-1.
+    """
+    if not target_build or df.empty:
         return None
-    dates = sorted(history["data"].unique())
+    dates = sorted(df["data"].unique())
     if len(dates) < 2:
         return None
-    on_target = history[history["versao_app"] == target_build]
-    by_day = on_target.groupby("data")["validadores"].sum()
-    return int(by_day.get(dates[-1], 0)) - int(by_day.get(dates[-2], 0))
+    before = _latest_snapshot_as_of(df, dates[-2]).set_index("id_validador")["versao_app"]
+    after = _latest_snapshot_as_of(df, dates[-1]).set_index("id_validador")["versao_app"]
+    common = before.index.intersection(after.index)
+    return int(((before[common] != target_build) & (after[common] == target_build)).sum())
 
 
 def render_overview(
@@ -368,9 +377,8 @@ def render_overview(
     elif delta == 0:
         second_line = "Última madrugada: sem atualizações"
     else:
-        sign = "+" if delta > 0 else "−"
         second_line = (
-            f"Última madrugada: {sign}{abs(delta)} "
+            f"Última madrugada: +{delta} "
             f"{_plural(delta, 'validador', 'validadores')}"
         )
 
@@ -550,13 +558,17 @@ def render_history_card(
 
 
 def render_distribution_card(
-    today_status: pd.DataFrame,
+    counts: Dict[str, int],
     target_build: str,
     colors: Dict[str, str],
     reference: date,
 ) -> None:
-    """Distribuição por versão (último estado conhecido na janela)."""
-    counts = {str(r.versao_app): int(r.validadores) for r in today_status.itertuples()}
+    """Distribuição por versão sobre o último estado conhecido de cada validador.
+
+    Recebe as mesmas contagens da manchete (known_version_counts), para que
+    validadores offline há mais de 3 dias entrem com a versão lembrada, como
+    o rodapé do card afirma, e os totais batam com "N de M".
+    """
     total = sum(counts.values())
     rows = []
     for v in _ordered_for_display(list(counts), target_build):
@@ -656,21 +668,43 @@ def render_inventory_filters(
     return status or "todos", version, search
 
 
-def _activity_versions(dots: str, window_versions: List[str]) -> List[Optional[str]]:
-    """Traduz a string de atividade de metrics (um marcador por dia) em versões.
+def _daily_versions(df: pd.DataFrame) -> Dict[str, Dict[date, str]]:
+    """Versão reportada por validador em cada dia da janela.
 
-    Cada marcador é ACTIVITY_DOTS[i % 7], com i = posição da versão em
-    _ordered_versions da janela; NO_ACTIVITY_DOT = não reportou. A UI só usa
-    isso para pintar os blocos com a cor do papel da versão.
+    Mesma regra de build_inventory_table: no mesmo dia vale a versão mais
+    alta, agregando só por id_validador (troca de veículo não perde dias).
     """
-    out: List[Optional[str]] = []
-    for ch in dots:
-        if ch == NO_ACTIVITY_DOT or ch not in ACTIVITY_DOTS:
-            out.append(None)
-            continue
-        idx = ACTIVITY_DOTS.index(ch)
-        out.append(window_versions[idx] if idx < len(window_versions) else None)
-    return out
+    deduped = _dedupe_max_version_per_day(df)
+    return {
+        str(val): (
+            grp.assign(_vk=grp["versao_app"].apply(_version_key))
+            .sort_values("_vk")
+            .set_index("data")["versao_app"]
+            .to_dict()
+        )
+        for val, grp in deduped.groupby("id_validador")
+    }
+
+
+def _activity_blocks(
+    per_day: Dict[date, str], days: List[date], colors: Dict[str, str]
+) -> str:
+    blocks = []
+    for d in days:
+        version = per_day.get(d)
+        if version:
+            label = _esc(f"{d:%d/%m}: {version}")
+            blocks.append(
+                f'<span class="block" role="img" aria-label="{label}" title="{label}" '
+                f'style="background:{_color(colors, version)}"></span>'
+            )
+        else:
+            label = f"{d:%d/%m}: não reportou"
+            blocks.append(
+                f'<span class="block block--empty" role="img" aria-label="{label}" '
+                f'title="{label}"></span>'
+            )
+    return "".join(blocks)
 
 
 def _status_html(status: str) -> str:
@@ -699,7 +733,7 @@ def render_inventory_table(
     colors: Dict[str, str],
 ) -> None:
     days: List[date] = sorted(df["data"].unique())
-    window_versions = _ordered_versions(_dedupe_max_version_per_day(df), target_build)
+    daily = _daily_versions(df)
     days_label = " · ".join(f"{d:%d}" for d in days)
 
     if inventory.empty:
@@ -714,12 +748,7 @@ def render_inventory_table(
                 build_class = " inv__build--target"
             else:
                 build_class = ""
-            blocks = "".join(
-                f'<span class="block" style="background:{_color(colors, v)}"></span>'
-                if v
-                else '<span class="block block--empty"></span>'
-                for v in _activity_versions(str(r.atividade_recente), window_versions)
-            )
+            blocks = _activity_blocks(daily.get(str(r.id_validador), {}), days, colors)
             rows.append(
                 "<tr>"
                 f'<td class="inv__vehicle">{_esc(str(r.id_veiculo) or "—")}</td>'

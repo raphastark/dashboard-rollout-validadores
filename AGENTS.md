@@ -29,7 +29,7 @@ Fluxo em camadas, uma responsabilidade por módulo — manter a separação:
 - `app.py` — entry-point: page config, layout (`st.columns`) e orquestração.
   Não calcula nada nem renderiza componente complexo aqui. Contém o modo de
   manutenção (secret `[app].maintenance_mode`) e o botão "Atualizar"
-  (`clear_all_caches()` + `st.rerun`).
+  (`on_click=clear_all_caches`, sem `st.rerun`).
 - `src/data.py` — acesso a dados: BigQuery (`fetch_rollout_data`), API da
   frota em tempo real (`fetch_fleet_truth`, lê `[fleet_api].url`), roster da
   planilha de mapeamento (`fetch_fleet_mapping`, CSV público, uso ADITIVO:
@@ -74,6 +74,12 @@ Fluxo em camadas, uma responsabilidade por módulo — manter a separação:
   (`src/ui.py`) e no `config.toml`. Cores de versão por papel: alvo verde,
   anterior azul, antigas cinza. Laranja `#E87A3E` só na marca (fio do
   cabeçalho) — nunca em versão, gráfico, botão ou alerta. Logos em `static/`.
+- Streamlit ≥ 1.61 (piso do `requirements.txt` = versão testada): a UI usa
+  `[theme.light]`/`[theme.dark]`, `width="stretch"`, `st.context.theme`,
+  `st.container(key=...)` e `st.segmented_control`. Não baixar o piso.
+- Botões que limpam cache usam `on_click` (roda antes do rerun); nunca
+  limpar + `st.rerun()` depois de já ter consultado, senão o BigQuery é
+  consultado duas vezes.
 
 ## Gotchas
 

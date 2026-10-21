@@ -29,7 +29,7 @@ from src.ui import (
     fleet_source,
     inject_styles,
     known_version_counts,
-    last_night_delta,
+    last_night_upgrades,
     mapping_source,
     never_reported_count,
     page_icon,
@@ -100,14 +100,16 @@ def main() -> None:
         ]
     )
 
+    # on_click roda ANTES do rerun disparado pelo clique: os caches são
+    # limpos antes das consultas acima, então o rerun já busca dados novos
+    # uma única vez (sem st.rerun extra, sem consulta dupla ao BigQuery).
     with st.container(key="refresh_row"):
-        if st.button(
+        st.button(
             "Atualizar",
             key="refresh",
             help="Atualizar dados agora (BigQuery + API da frota)",
-        ):
-            clear_all_caches()
-            st.rerun()
+            on_click=clear_all_caches,
+        )
 
     if bq_error is not None:
         st.error(
@@ -164,19 +166,20 @@ def main() -> None:
         + inventory["build_atual"].tolist(),
     )
 
+    counts = known_version_counts(state, today_status)
     render_overview(
         kpis,
-        known_version_counts(state, today_status),
+        counts,
         colors,
         never_reported_count(inventory),
-        last_night_delta(history, target_build),
+        last_night_upgrades(df, target_build),
     )
 
     chart_left, chart_right = st.columns(2, gap="small")
     with chart_left:
         render_history_card(history, target_build, colors)
     with chart_right:
-        render_distribution_card(today_status, target_build, colors, latest_date(df))
+        render_distribution_card(counts, target_build, colors, latest_date(df))
 
     with st.container(key="inventory_card"):
         status, version, search = render_inventory_filters(
