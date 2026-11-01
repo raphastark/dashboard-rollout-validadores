@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Dict, Iterable, List, Optional, Set, Tuple
@@ -219,6 +220,7 @@ def detect_target_build(
     forced: str = "",
     min_share: float = 0.10,
     exclude: Optional[Set[str]] = None,
+    known_versions: Iterable[Optional[str]] = (),
 ) -> str:
     """Build alvo: a versão que está sendo distribuída para a frota toda.
 
@@ -226,6 +228,11 @@ def detect_target_build(
     pelo menos `min_share` dos validadores. As que ficam acima dela com menos
     que isso são pilotos (ex.: biometria em 6 veículos), não a alvo. Versões
     em `declared_pilots` nunca viram alvo, qualquer que seja a fatia.
+
+    Se só pilotos declarados pingaram na janela (ex.: produção sem reportar
+    por 3 dias), a alvo sai de `known_versions` — a última versão conhecida
+    de cada validador —, a mais comum fora dos pilotos. Sem nenhuma versão
+    fora dos pilotos, fica sem alvo ("") em vez de promover um piloto.
 
     `forced` (secrets) vence a detecção só se alguém já reporta essa versão e
     ela não é mais antiga que a automática: uma build forçada esquecida nos
@@ -244,14 +251,13 @@ def detect_target_build(
         (v for v in counts.index if v not in declared), key=_version_key, reverse=True
     )
     target = next((v for v in candidates if counts[v] / total >= min_share), "")
-    if not target:
+    if not target and candidates:
         # Frota fragmentada (nenhuma versão fora dos pilotos com a fatia
         # mínima): a mais comum entre as não declaradas.
-        target = (
-            max(candidates, key=lambda v: counts[v])
-            if candidates
-            else max(counts.index, key=_version_key)
-        )
+        target = max(candidates, key=lambda v: counts[v])
+    if not target:
+        remembered = Counter(v for v in known_versions if v and v not in declared)
+        target = remembered.most_common(1)[0][0] if remembered else ""
     if forced and forced in counts.index and _version_key(forced) >= _version_key(target):
         target = forced
     return target

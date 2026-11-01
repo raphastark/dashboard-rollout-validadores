@@ -162,7 +162,12 @@ def main() -> None:
 
     forced_target, pilot_labels = load_rollout_config()
     target_build = detect_target_build(
-        df, pilot_labels, forced_target, TARGET_MIN_SHARE, exclude=replaced
+        df,
+        pilot_labels,
+        forced_target,
+        TARGET_MIN_SHARE,
+        exclude=replaced,
+        known_versions=[rec.get("versao_app") for rec in active_state.values()],
     )
     kpis = compute_kpis(df, target_build, state=active_state)
     inventory = build_inventory_table(
