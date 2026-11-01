@@ -607,7 +607,10 @@
 }
 .st-key-status_filter button:nth-of-type(2)::before { background: var(--version-target); }
 .st-key-status_filter button:nth-of-type(3)::before { background: var(--version-previous); }
-.st-key-status_filter button:nth-of-type(4)::before { background: var(--version-pilot); }
+/* Piloto: ponto dividido entre os dois primeiros tons — há um por piloto. */
+.st-key-status_filter button:nth-of-type(4)::before {
+  background: linear-gradient(90deg, var(--version-pilot) 50%, var(--version-pilot-2) 50%);
+}
 .st-key-status_filter button:nth-of-type(5)::before { background: var(--muted); }
 .st-key-status_filter button:nth-of-type(6)::before { background: var(--warn); }
 .st-key-status_filter button:nth-of-type(7)::before {
@@ -707,9 +710,6 @@ table.inv td.mono {
 .inv__build--target {
   color: var(--version-target-text);
 }
-.inv__build--pilot {
-  color: var(--version-pilot);
-}
 .inv__build--none {
   color: var(--muted);
 }
@@ -751,6 +751,7 @@ table.inv td.mono {
 .status--target .status__dot { background: var(--version-target); }
 .status--previous .status__dot { background: var(--version-previous); }
 .status--pilot .status__dot { background: var(--version-pilot); }
+.status__note { color: var(--text-2); }
 .status--never { color: var(--text-2); }
 .status--never .status__dot { background: var(--muted); }
 .status--replaced { color: var(--muted); }
@@ -781,7 +782,6 @@ table.inv td.mono {
 .legend-block--target { background: var(--version-target); }
 .legend-block--previous { background: var(--version-previous); }
 .legend-block--older { background: var(--version-older); }
-.legend-block--pilot { background: var(--version-pilot); }
 .legend-block--empty {
   box-shadow: inset 0 0 0 1px var(--version-none);
 }

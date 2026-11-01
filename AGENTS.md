@@ -44,7 +44,9 @@ Fluxo em camadas, uma responsabilidade por módulo — manter a separação:
   opcional `[rollout]` dos secrets: `build_alvo` e `[rollout.pilotos]`).
 - `src/metrics.py` — transformações puras de pandas: KPIs (adoção sobre o
   estado conhecido, pilotos fora do denominador), build alvo
-  (`detect_target_build`, `is_pilot`), substituídos (`find_replaced`), série
+  (`detect_target_build`, `is_pilot`; `resolve_rollout_config` casa as versões
+  dos secrets com as reportadas pelos números e devolve as não encontradas,
+  que `app.py` mostra como aviso), substituídos (`find_replaced`), série
   histórica (snapshot _as-of_ por validador), merge incremental do estado
   (`merge_last_known_state`), inventário (universo `_known_universe` =
   roster < estado < janela; status `ATUALIZADO` / `PENDENTE` / `PILOTO` /
@@ -77,7 +79,9 @@ Fluxo em camadas, uma responsabilidade por módulo — manter a separação:
   Plex Mono (versões, seriais, datas, eixos) — tanto no `styles.css` quanto em
   `FONT_UI`/`FONT_NUMBER`/`FONT_MONO` de `src/ui.py`. Tokens de cor em `THEMES`
   (`src/ui.py`) e no `config.toml`. Cores de versão por papel: alvo verde,
-  piloto roxo, anterior azul, antigas cinza. Laranja `#E87A3E` só na marca (fio do
+  pilotos lilás/ciano (`PILOT_ROLES`, um tom por piloto = tokens
+  `color-pilot-1`/`color-pilot-2` do DS Novacap; não trocar por roxo/rosa,
+  que se confundem com o pendente para daltônicos), anterior azul, antigas cinza. Laranja `#E87A3E` só na marca (fio do
   cabeçalho) — nunca em versão, gráfico, botão ou alerta. Logos em `static/`.
 - Streamlit ≥ 1.61 (piso do `requirements.txt` = versão testada): a UI usa
   `[theme.light]`/`[theme.dark]`, `width="stretch"`, `st.context.theme`,

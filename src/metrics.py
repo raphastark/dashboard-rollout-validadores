@@ -207,6 +207,46 @@ def find_replaced(
     return replaced
 
 
+def resolve_rollout_config(
+    forced: str,
+    pilot_labels: Dict[str, str],
+    known_versions: Iterable[Optional[str]],
+) -> Tuple[str, Dict[str, str], List[str]]:
+    """Casa build_alvo e pilotos dos secrets com as versões conhecidas.
+
+    A comparação é pelos números (`_version_key`): "V.2.23.4" declarado casa
+    com "V.2.23.04" reportado, e passa a usar a grafia reportada — a que o
+    resto do painel compara. Versão que não casa com nenhuma conhecida
+    (erro de digitação, piloto encerrado, build_alvo que ninguém reporta
+    ainda) volta na lista de não encontradas, para a UI avisar.
+
+    Returns:
+        (build_alvo, {versao: rotulo}, versões declaradas não encontradas).
+    """
+    known = {str(v) for v in known_versions if v}
+    by_number = {_version_key(v)[:3]: v for v in known if VERSION_REGEX.match(v.strip())}
+
+    def _match(v: str) -> Optional[str]:
+        if v in known:
+            return v
+        return by_number.get(_version_key(v)[:3]) if VERSION_REGEX.match(v) else None
+
+    missing: List[str] = []
+    labels: Dict[str, str] = {}
+    for v, label in pilot_labels.items():
+        found = _match(v)
+        if found:
+            labels[found] = label
+        else:
+            missing.append(v)
+    if forced:
+        found = _match(forced)
+        if not found:
+            missing.append(forced)
+        forced = found or forced
+    return forced, labels, missing
+
+
 def is_pilot(version: Optional[str], target_build: str) -> bool:
     """Versão acima da build alvo está em piloto — à frente, não pendente."""
     if not version or version == "—" or not target_build:

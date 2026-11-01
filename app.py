@@ -26,6 +26,7 @@ from src.metrics import (
     find_replaced,
     latest_date,
     merge_last_known_state,
+    resolve_rollout_config,
 )
 from src.ui import (
     bigquery_source,
@@ -160,14 +161,24 @@ def main() -> None:
     replaced = find_replaced(df, state, roster, VALIDATORS_PER_VEHICLE)
     active_state = {vid: rec for vid, rec in state.items() if vid not in replaced}
 
-    forced_target, pilot_labels = load_rollout_config()
+    remembered = [rec.get("versao_app") for rec in active_state.values()]
+    forced_target, pilot_labels, not_found = resolve_rollout_config(
+        *load_rollout_config(), remembered + df["versao_app"].tolist()
+    )
+    if not_found:
+        render_notice(
+            "Versão dos secrets [rollout] sem validador.",
+            f"Nenhum validador reporta {', '.join(not_found)}; o painel ignora "
+            "esse trecho até isso mudar. Confira a grafia exibida no painel "
+            "(ex.: V.2.23.04) ou remova o piloto encerrado.",
+        )
     target_build = detect_target_build(
         df,
         pilot_labels,
         forced_target,
         TARGET_MIN_SHARE,
         exclude=replaced,
-        known_versions=[rec.get("versao_app") for rec in active_state.values()],
+        known_versions=remembered,
     )
     kpis = compute_kpis(df, target_build, state=active_state)
     inventory = build_inventory_table(
@@ -219,7 +230,7 @@ def main() -> None:
         )
         shown = filter_by_status(filter_inventory(inventory, version, search), status)
         total = by_status["substituido" if status == "substituido" else "todos"]
-        render_inventory_table(shown, total, df, target_build, colors)
+        render_inventory_table(shown, total, df, target_build, colors, pilot_labels)
 
 
 if __name__ == "__main__":
