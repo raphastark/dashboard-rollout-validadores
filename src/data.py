@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 import threading
 import warnings
 from datetime import date, datetime
@@ -53,6 +54,18 @@ MAPPING_CSV_URL = (
 # mostra por mais alguns). Margem curta evita acúmulo de "fantasmas"
 # PENDENTE distorcendo a adoção — trocas são frequentes (~26 em 4 meses).
 STATE_PRUNE_DAYS = 7
+
+# Vagas de validador por veículo (a planilha de mapeamento tem 2 colunas).
+# Serial a mais num veículo, com essa quantidade de outros pingando depois
+# dele, foi trocado — sai das contagens (ver metrics.find_replaced).
+VALIDATORS_PER_VEHICLE = 2
+
+# Fatia mínima da frota para uma versão ser a build alvo. Versão acima da
+# alvo com menos que isso é piloto (ex.: biometria no validador 1 de 6
+# veículos, cartão de crédito/débito em 12 validadores). Rollout geral que
+# comece abaixo disso na 1ª madrugada aparece como piloto até passar da
+# fatia — para corrigir na hora, use [rollout].build_alvo nos secrets.
+TARGET_MIN_SHARE = 0.10
 
 
 @st.cache_resource(show_spinner=False)
@@ -174,6 +187,34 @@ def fetch_fleet_mapping() -> pd.DataFrame:
             "Planilha de mapeamento vazia ou com validadores duplicados."
         )
     return mapping
+
+
+def _normalize_version(value: object) -> str:
+    """Aceita "2.25.3", "v.2.25.3" ou "V.2.25.3" — o formato do BigQuery é "V.x.y.z"."""
+    v = str(value or "").strip()
+    if re.fullmatch(r"\d+\.\d+\.\d+", v):
+        return f"V.{v}"
+    if v[:2].lower() == "v.":
+        return f"V.{v[2:]}"
+    return v
+
+
+def load_rollout_config() -> Tuple[str, Dict[str, str]]:
+    """Build alvo forçada e pilotos declarados na seção opcional [rollout].
+
+    Sem a seção, a detecção é automática (TARGET_MIN_SHARE). Lido a cada
+    rerun (não é consulta): mudança nos secrets vale no próximo carregamento.
+
+    Returns:
+        (build_alvo, {versao: rotulo}); build_alvo vazio = automática.
+    """
+    cfg = st.secrets.get("rollout", {})
+    forced = _normalize_version(cfg.get("build_alvo", ""))
+    pilots = {
+        _normalize_version(version): str(label or "").strip()
+        for version, label in dict(cfg.get("pilotos", {})).items()
+    }
+    return forced, {v: label for v, label in pilots.items() if v}
 
 
 def today_sp() -> date:
