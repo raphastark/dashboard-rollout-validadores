@@ -71,6 +71,42 @@ def _parse_iso_date(value: Optional[str]) -> Optional[date]:
         return None
 
 
+def unify_version_spellings(
+    df: pd.DataFrame, state: Dict[str, dict]
+) -> Tuple[pd.DataFrame, Dict[str, dict]]:
+    """Uma grafia só por build, na janela e na memória de última versão.
+
+    A mesma build pode chegar como "V.2.23.4" e "V.2.23.04". O resto do
+    painel compara versões por igualdade de texto (alvo, piloto, KPIs), então
+    grafias diferentes dividiriam a build entre alvo, piloto e pendente.
+    Todas passam a usar a grafia mais frequente (empate: a menor em ordem
+    alfabética). Versões fora do formato V.x.y.z ficam como estão; sem
+    grafias concorrentes, devolve os mesmos objetos.
+    """
+    counts = Counter(
+        [str(v) for v in df["versao_app"] if v]
+        + [str(rec["versao_app"]) for rec in state.values() if rec.get("versao_app")]
+    )
+    groups: Dict[Tuple[int, int, int], List[str]] = {}
+    for v in counts:
+        if VERSION_REGEX.match(v.strip()):
+            groups.setdefault(_version_key(v)[:3], []).append(v)
+    respell: Dict[str, str] = {}
+    for spellings in groups.values():
+        if len(spellings) > 1:
+            canonical = min(spellings, key=lambda s: (-counts[s], s))
+            respell.update({s: canonical for s in spellings if s != canonical})
+    if not respell:
+        return df, state
+    return (
+        df.assign(versao_app=df["versao_app"].replace(respell)),
+        {
+            vid: {**rec, "versao_app": respell.get(rec.get("versao_app"), rec.get("versao_app"))}
+            for vid, rec in state.items()
+        },
+    )
+
+
 def merge_last_known_state(
     prev_state: Dict[str, dict],
     window_df: pd.DataFrame,
@@ -205,6 +241,52 @@ def find_replaced(
             if newer >= slots:
                 replaced.add(vid)
     return replaced
+
+
+def resolve_rollout_config(
+    forced: str,
+    pilot_labels: Dict[str, str],
+    known_versions: Iterable[Optional[str]],
+) -> Tuple[str, Dict[str, str], List[str]]:
+    """Casa build_alvo e pilotos dos secrets com as versões conhecidas.
+
+    A comparação é pelos números (`_version_key`): "V.2.23.4" declarado casa
+    com "V.2.23.04" reportado, e passa a usar a grafia reportada — a que o
+    resto do painel compara. Se a mesma versão aparece com mais de uma
+    grafia, o piloto vale para todas: uma grafia sem rótulo ficaria fora de
+    `declared_pilots` e poderia virar build alvo. Versão que não casa com
+    nenhuma conhecida (erro de digitação, piloto encerrado, build_alvo que
+    ninguém reporta ainda) volta na lista de não encontradas, para a UI avisar.
+
+    Returns:
+        (build_alvo, {versao: rotulo}, versões declaradas não encontradas).
+    """
+    known = {str(v) for v in known_versions if v}
+    by_number: Dict[Tuple[int, int, int], List[str]] = {}
+    for v in sorted(known):
+        if VERSION_REGEX.match(v.strip()):
+            by_number.setdefault(_version_key(v)[:3], []).append(v)
+
+    def _matches(v: str) -> List[str]:
+        if VERSION_REGEX.match(v):
+            return by_number.get(_version_key(v)[:3], [])
+        return [v] if v in known else []
+
+    missing: List[str] = []
+    labels: Dict[str, str] = {}
+    for v, label in pilot_labels.items():
+        found = _matches(v)
+        if not found:
+            missing.append(v)
+        for spelling in found:
+            labels[spelling] = label
+    if forced:
+        found = _matches(forced)
+        if not found:
+            missing.append(forced)
+        elif forced not in found:
+            forced = found[0]
+    return forced, labels, missing
 
 
 def is_pilot(version: Optional[str], target_build: str) -> bool:
