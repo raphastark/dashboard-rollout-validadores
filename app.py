@@ -27,6 +27,7 @@ from src.metrics import (
     latest_date,
     merge_last_known_state,
     resolve_rollout_config,
+    unify_version_spellings,
 )
 from src.ui import (
     bigquery_source,
@@ -152,7 +153,10 @@ def main() -> None:
     # versão anterior (não existe OTA sem energia).
     store = get_last_known_store()
     with get_last_known_lock():
-        state = merge_last_known_state(store, df, roster, today_sp(), STATE_PRUNE_DAYS)
+        # Mesma build com grafias diferentes ("V.2.23.4"/"V.2.23.04") vira uma
+        # só antes de qualquer comparação de alvo, piloto ou KPI.
+        df, known = unify_version_spellings(df, store)
+        state = merge_last_known_state(known, df, roster, today_sp(), STATE_PRUNE_DAYS)
         store.clear()
         store.update(state)
 

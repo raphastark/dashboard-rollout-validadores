@@ -71,6 +71,42 @@ def _parse_iso_date(value: Optional[str]) -> Optional[date]:
         return None
 
 
+def unify_version_spellings(
+    df: pd.DataFrame, state: Dict[str, dict]
+) -> Tuple[pd.DataFrame, Dict[str, dict]]:
+    """Uma grafia só por build, na janela e na memória de última versão.
+
+    A mesma build pode chegar como "V.2.23.4" e "V.2.23.04". O resto do
+    painel compara versões por igualdade de texto (alvo, piloto, KPIs), então
+    grafias diferentes dividiriam a build entre alvo, piloto e pendente.
+    Todas passam a usar a grafia mais frequente (empate: a menor em ordem
+    alfabética). Versões fora do formato V.x.y.z ficam como estão; sem
+    grafias concorrentes, devolve os mesmos objetos.
+    """
+    counts = Counter(
+        [str(v) for v in df["versao_app"] if v]
+        + [str(rec["versao_app"]) for rec in state.values() if rec.get("versao_app")]
+    )
+    groups: Dict[Tuple[int, int, int], List[str]] = {}
+    for v in counts:
+        if VERSION_REGEX.match(v.strip()):
+            groups.setdefault(_version_key(v)[:3], []).append(v)
+    respell: Dict[str, str] = {}
+    for spellings in groups.values():
+        if len(spellings) > 1:
+            canonical = min(spellings, key=lambda s: (-counts[s], s))
+            respell.update({s: canonical for s in spellings if s != canonical})
+    if not respell:
+        return df, state
+    return (
+        df.assign(versao_app=df["versao_app"].replace(respell)),
+        {
+            vid: {**rec, "versao_app": respell.get(rec.get("versao_app"), rec.get("versao_app"))}
+            for vid, rec in state.items()
+        },
+    )
+
+
 def merge_last_known_state(
     prev_state: Dict[str, dict],
     window_df: pd.DataFrame,

@@ -46,7 +46,9 @@ Fluxo em camadas, uma responsabilidade por módulo — manter a separação:
   estado conhecido, pilotos fora do denominador), build alvo
   (`detect_target_build`, `is_pilot`; `resolve_rollout_config` casa as versões
   dos secrets com as reportadas pelos números e devolve as não encontradas,
-  que `app.py` mostra como aviso), substituídos (`find_replaced`), série
+  que `app.py` mostra como aviso; `unify_version_spellings` dá uma grafia
+  só a cada build — a mais frequente — na janela e na memória, antes de
+  qualquer comparação), substituídos (`find_replaced`), série
   histórica (snapshot _as-of_ por validador), merge incremental do estado
   (`merge_last_known_state`), inventário (universo `_known_universe` =
   roster < estado < janela; status `ATUALIZADO` / `PENDENTE` / `PILOTO` /

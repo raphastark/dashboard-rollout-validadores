@@ -90,6 +90,7 @@ Mudança de apresentação e de leitura dos secrets; nenhuma regra de métrica m
 - **Tokens novos no design system:** o DS da Novacap não tinha cor de piloto, e as cores de dados dele já têm significado (ok, pendente, antigas, atenção, crítico, sem dados; laranja só da marca). Entraram nele `color-pilot-1` (lilás: `#E0C3FD` no escuro, `#73456E` no claro) e `color-pilot-2` (ciano: `#B1F6FB` / `#157A82`), com a regra de uso na seção "Cor". Escolhidos por medição: texto ≥ 4,5:1 nos dois temas, distância perceptual (CIEDE2000) ≥ 8,7 de todas as cores de estado e de versão do DS, simulando também deuteranopia e protanopia, e claridades diferentes entre si. O roxo anterior ficava a ~7 do "pendente" para daltônicos — piloto (à frente) e pendente (atrasado) podiam se confundir.
 - **Aviso de versão dos secrets:** versão de `[rollout]` que nenhum validador reporta gera um aviso no topo, em vez de ser ignorada em silêncio — foi o que aconteceu com os nomes dos pilotos, configurados com versões de exemplo.
 - **Grafia tolerante:** as versões dos secrets são comparadas pelos números, então `V.2.23.4` casa com `V.2.23.04` reportado.
+- **Uma grafia por build:** se a mesma build chega com grafias diferentes (`V.2.23.4` e `V.2.23.04`), a janela e a memória passam a usar a mais frequente antes de qualquer comparação. Sem isso, a build se dividia entre alvo, piloto e pendente, porque o painel compara versões pelo texto.
 
 ### [2026-11-01] — Validador substituído e pilotos fora da build alvo
 
