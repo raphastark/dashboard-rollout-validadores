@@ -39,24 +39,29 @@ Fluxo em camadas, uma responsabilidade por módulo — manter a separação:
   ciclo ler-mesclar-escrever entre sessões concorrentes do Streamlit. Query
   parametrizada, credenciais e cache (`@st.cache_resource` no client,
   `@st.cache_data` nos dados, TTL 24h). Constantes (PROJECT_ID, ID_OPERADORA,
-  prefixos de veículo, janela de dias, fuso) vivem aqui.
+  prefixos de veículo, janela de dias, fuso, `VALIDATORS_PER_VEHICLE`,
+  `TARGET_MIN_SHARE`) vivem aqui, assim como `load_rollout_config` (seção
+  opcional `[rollout]` dos secrets: `build_alvo` e `[rollout.pilotos]`).
 - `src/metrics.py` — transformações puras de pandas: KPIs (adoção sobre o
-  estado conhecido), série histórica (snapshot _as-of_ por validador), merge
-  incremental do estado (`merge_last_known_state`), inventário (universo =
-  roster < estado < janela; marcadores `· OFFLINE` / `· OFFLINE HÁ N DIA(S)` /
-  `NUNCA REPORTOU`), `available_versions` (filtro de versão derivado do
-  inventário completo, não só da janela) e filtro. **Não importar
+  estado conhecido, pilotos fora do denominador), build alvo
+  (`detect_target_build`, `is_pilot`), substituídos (`find_replaced`), série
+  histórica (snapshot _as-of_ por validador), merge incremental do estado
+  (`merge_last_known_state`), inventário (universo `_known_universe` =
+  roster < estado < janela; status `ATUALIZADO` / `PENDENTE` / `PILOTO` /
+  `NUNCA REPORTOU` / `SUBSTITUÍDO`, marcadores `· OFFLINE` /
+  `· OFFLINE HÁ N DIA(S)`), `available_versions` (filtro de versão derivado
+  do inventário completo, não só da janela) e filtro. **Não importar
   `streamlit` aqui** — é testável puro.
 - `src/ui.py` — componentes visuais: HTML/CSS injetado, cards, gráficos
   Plotly. Carrega `static/styles.css` via `inject_styles()`, que injeta antes
   os tokens do modo ativo (`THEMES`, escolhido por `st.context.theme`).
-  Cores de versão por papel em `version_colors` (alvo/anterior/antigas).
+  Cores de versão por papel em `version_colors` (alvo/piloto/anterior/antigas).
 - `static/styles.css` — todo o estilo custom (classes BEM: `brandbar__title`,
   `card__title`, `inv__foot`...). Preferir CSS aqui a inline no Python.
 - `.streamlit/` — `config.toml` (tema escuro padrão + `[theme.light]` /
   `[theme.dark]` com os tokens do Monitoramento de Frota) e
-  `secrets.toml.example` (templates das seções `[gcp_service_account]` e
-  `[fleet_api]`).
+  `secrets.toml.example` (templates das seções `[gcp_service_account]`,
+  `[fleet_api]` e da opcional `[rollout]`).
 
 ## Convenções
 
@@ -72,7 +77,7 @@ Fluxo em camadas, uma responsabilidade por módulo — manter a separação:
   Plex Mono (versões, seriais, datas, eixos) — tanto no `styles.css` quanto em
   `FONT_UI`/`FONT_NUMBER`/`FONT_MONO` de `src/ui.py`. Tokens de cor em `THEMES`
   (`src/ui.py`) e no `config.toml`. Cores de versão por papel: alvo verde,
-  anterior azul, antigas cinza. Laranja `#E87A3E` só na marca (fio do
+  piloto roxo, anterior azul, antigas cinza. Laranja `#E87A3E` só na marca (fio do
   cabeçalho) — nunca em versão, gráfico, botão ou alerta. Logos em `static/`.
 - Streamlit ≥ 1.61 (piso do `requirements.txt` = versão testada): a UI usa
   `[theme.light]`/`[theme.dark]`, `width="stretch"`, `st.context.theme`,
@@ -118,6 +123,18 @@ Fluxo em camadas, uma responsabilidade por módulo — manter a separação:
   roster sem ping há >7 dias são podadas (serial trocado = sai rápido;
   trocas são frequentes — não deixar fantasmas PENDENTE inflando o
   denominador da adoção).
+- **Build alvo ≠ versão mais alta:** a Jaé roda pilotos simultâneos em
+  poucos validadores (ex.: biometria no validador 1 — o das gratuidades — e
+  cartão de crédito/débito). Alvo = versão mais alta com ≥ `TARGET_MIN_SHARE`
+  (10%) da janela fresca; acima dela é piloto, fora do % de adoção e dos
+  pendentes. Pelos dados não dá para distinguir piloto de começo de rollout,
+  por isso existe a correção manual em `[rollout]` — não trocar por mais
+  heurística.
+- **Substituído:** veículo tem `VALIDATORS_PER_VEHICLE` (2) vagas. Serial com
+  2+ outros do mesmo veículo pingando depois dele (por dia) foi trocado e sai
+  de todas as contagens (`find_replaced`, aplicado em `app.py` via
+  `active_state`). Não podar a memória por isso, nem desempatar troca do
+  mesmo dia com a API da frota — empate se resolve na consulta seguinte.
 - **Fuso horário:** query e `fetched_at` usam `America/Sao_Paulo`
   (`CURRENT_DATE('America/Sao_Paulo')`, `ZoneInfo`) — não usar datas UTC.
 - **Snapshot as-of:** `build_atual` e o histórico usam o último estado
@@ -134,6 +151,7 @@ Fluxo em camadas, uma responsabilidade por módulo — manter a separação:
 
 Ler o `README.md` — setup completo das credenciais, contexto de uso dos
 KPIs/filtros e principalmente a seção **Changelog**, que documenta decisões
-deliberadas de métricas (as-of, offline como marcador) — antes de alterar
-`src/data.py`, `src/metrics.py` ou o significado de status/KPIs
-(`ATUALIZADO`/`PENDENTE`, `· OFFLINE`, build alvo, blocos de atividade).
+deliberadas de métricas (as-of, offline como marcador, pilotos, substituídos)
+— antes de alterar `src/data.py`, `src/metrics.py` ou o significado de
+status/KPIs (`ATUALIZADO`/`PENDENTE`/`PILOTO`/`SUBSTITUÍDO`, `· OFFLINE`,
+build alvo, blocos de atividade).

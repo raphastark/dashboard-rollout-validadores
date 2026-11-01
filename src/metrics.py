@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import pandas as pd
 
@@ -21,9 +22,12 @@ class KPIs:
     meta_atingida: int
     target_build: str
     reference_date: date
-    # Denominador da adoção (validadores com versão conhecida). Exposto só
-    # para a UI exibir "N de M"; não altera nenhum cálculo.
+    # Denominador da adoção: validadores com versão conhecida fora de piloto.
+    # Exposto para a UI exibir "N de M".
     total_conhecido: int = 0
+    # Validadores em versão acima da alvo (pilotos): ficam fora do
+    # denominador da adoção e dos pendentes — estão à frente, não atrasados.
+    em_piloto: int = 0
 
 
 def _version_key(v: str) -> Tuple[int, int, int, str]:
@@ -123,13 +127,140 @@ def merge_last_known_state(
     return state
 
 
-def detect_target_build(df: pd.DataFrame) -> str:
-    ref = latest_date(df)
-    snapshot = _latest_snapshot_as_of(df, ref)
-    versions = snapshot["versao_app"].dropna().unique().tolist()
-    if not versions:
+def _known_universe(
+    df: pd.DataFrame,
+    state: Optional[Dict[str, dict]],
+    roster: Optional[pd.DataFrame],
+) -> Dict[str, dict]:
+    """Último registro conhecido por validador: {id_veiculo, versao_app, ultimo_ping}.
+
+    Do menor para o maior precedente de informação: roster (existe na frota)
+    < estado persistente < janela do BigQuery.
+    """
+    rows: Dict[str, dict] = {}
+    if roster is not None and not roster.empty:
+        for r in roster.itertuples():
+            rows[str(r.id_validador)] = {
+                "id_veiculo": str(r.id_veiculo),
+                "versao_app": None,
+                "ultimo_ping": None,
+            }
+    if state:
+        for vid, rec in state.items():
+            rows[vid] = {
+                "id_veiculo": rec.get("id_veiculo", ""),
+                "versao_app": rec.get("versao_app") or None,
+                "ultimo_ping": _parse_iso_date(rec.get("data_ultimo_ping")),
+            }
+    snapshot = _latest_snapshot_as_of(df, latest_date(df))
+    for r in snapshot.itertuples():
+        rows[str(r.id_validador)] = {
+            "id_veiculo": str(r.id_veiculo),
+            "versao_app": str(r.versao_app),
+            "ultimo_ping": r.data,
+        }
+    return rows
+
+
+def find_replaced(
+    df: pd.DataFrame,
+    state: Optional[Dict[str, dict]] = None,
+    roster: Optional[pd.DataFrame] = None,
+    slots: int = 2,
+) -> Set[str]:
+    """Validadores que saíram do veículo porque outro serial ocupou a vaga.
+
+    Cada veículo tem `slots` validadores. Se no mesmo veículo há pelo menos
+    `slots` outros validadores com ping mais recente que o dele, o serial foi
+    trocado (ex.: validador em loop de reinício substituído por outro). Ele
+    sai das contagens em vez de aparecer como 3º validador "offline" do carro.
+    Validador mapeado que nunca reportou, num veículo com `slots` outros
+    reportando, é mapeamento desatualizado: mesmo tratamento.
+
+    A comparação é por dia (a query só guarda a data do ping): troca feita no
+    mesmo dia empata e só se resolve na consulta seguinte. Três validadores
+    pingando no mesmo dia também empatam — anomalia de cadastro que continua
+    visível em vez de ser escondida.
+
+    Não poda a memória de última versão: se o serial voltar a pingar em
+    qualquer veículo, a janela o traz de volta e a regra é reavaliada.
+    """
+    by_vehicle: Dict[str, List[Tuple[str, Optional[date]]]] = {}
+    for vid, rec in _known_universe(df, state, roster).items():
+        if rec["id_veiculo"]:
+            by_vehicle.setdefault(rec["id_veiculo"], []).append((vid, rec["ultimo_ping"]))
+
+    replaced: Set[str] = set()
+    for members in by_vehicle.values():
+        if len(members) <= slots:
+            continue
+        for vid, ping in members:
+            newer = sum(
+                1
+                for other, other_ping in members
+                if other != vid
+                and other_ping is not None
+                and (ping is None or other_ping > ping)
+            )
+            if newer >= slots:
+                replaced.add(vid)
+    return replaced
+
+
+def is_pilot(version: Optional[str], target_build: str) -> bool:
+    """Versão acima da build alvo está em piloto — à frente, não pendente."""
+    if not version or version == "—" or not target_build:
+        return False
+    return _version_key(version) > _version_key(target_build)
+
+
+def detect_target_build(
+    df: pd.DataFrame,
+    declared_pilots: Iterable[str] = (),
+    forced: str = "",
+    min_share: float = 0.10,
+    exclude: Optional[Set[str]] = None,
+    known_versions: Iterable[Optional[str]] = (),
+) -> str:
+    """Build alvo: a versão que está sendo distribuída para a frota toda.
+
+    Automática: a versão mais alta, no último estado da janela fresca, com
+    pelo menos `min_share` dos validadores. As que ficam acima dela com menos
+    que isso são pilotos (ex.: biometria em 6 veículos), não a alvo. Versões
+    em `declared_pilots` nunca viram alvo, qualquer que seja a fatia.
+
+    Se só pilotos declarados pingaram na janela (ex.: produção sem reportar
+    por 3 dias), a alvo sai de `known_versions` — a última versão conhecida
+    de cada validador —, a mais comum fora dos pilotos. Sem nenhuma versão
+    fora dos pilotos, fica sem alvo ("") em vez de promover um piloto.
+
+    `forced` (secrets) vence a detecção só se alguém já reporta essa versão e
+    ela não é mais antiga que a automática: uma build forçada esquecida nos
+    secrets deixa de valer sozinha quando o rollout seguinte passa à frente.
+    Validadores em `exclude` (substituídos) não entram na conta.
+    """
+    snapshot = _latest_snapshot_as_of(df, latest_date(df))
+    if exclude:
+        snapshot = snapshot[~snapshot["id_validador"].isin(exclude)]
+    counts = snapshot["versao_app"].dropna().astype(str).value_counts()
+    if counts.empty:
         return ""
-    return max(versions, key=_version_key)
+    total = int(counts.sum())
+    declared = set(declared_pilots)
+    candidates = sorted(
+        (v for v in counts.index if v not in declared), key=_version_key, reverse=True
+    )
+    target = next((v for v in candidates if counts[v] / total >= min_share), "")
+    if not target and candidates:
+        # Frota fragmentada (nenhuma versão fora dos pilotos com a fatia
+        # mínima): a mais comum entre as não declaradas.
+        target = max(candidates, key=lambda v: counts[v])
+    if not target:
+        remembered = Counter(v for v in known_versions if v and v not in declared)
+        target = remembered.most_common(1)[0][0] if remembered else ""
+    if forced and forced in counts.index and _version_key(forced) >= _version_key(target):
+        target = forced
+    return target
 
 
 def compute_kpis(
@@ -147,47 +278,43 @@ def compute_kpis(
         known = [
             rec.get("versao_app") for rec in state.values() if rec.get("versao_app")
         ]
-        on_target = sum(1 for v in known if v == target_build)
-        total_validadores = len(known)
-        pct = (on_target / total_validadores * 100.0) if total_validadores else 0.0
-        return KPIs(
-            frota_operante=int(snapshot["id_veiculo"].nunique()),
-            adocao_alvo_pct=pct,
-            variedade=len(set(known)),
-            meta_atingida=on_target,
-            target_build=target_build,
-            reference_date=ref,
-            total_conhecido=total_validadores,
-        )
+    else:
+        known = snapshot["versao_app"].dropna().astype(str).tolist()
 
-    on_target_df = snapshot[snapshot["versao_app"] == target_build]
-
-    total_validadores = snapshot["id_validador"].nunique()
-    on_target_validadores = on_target_df["id_validador"].nunique()
-    pct = (on_target_validadores / total_validadores * 100.0) if total_validadores else 0.0
-
+    on_target = sum(1 for v in known if v == target_build)
+    em_piloto = sum(1 for v in known if is_pilot(v, target_build))
+    total_validadores = len(known) - em_piloto
+    pct = (on_target / total_validadores * 100.0) if total_validadores else 0.0
     return KPIs(
         frota_operante=int(snapshot["id_veiculo"].nunique()),
         adocao_alvo_pct=pct,
-        variedade=int(snapshot["versao_app"].nunique()),
-        meta_atingida=int(on_target_validadores),
+        variedade=len(set(known)),
+        meta_atingida=on_target,
         target_build=target_build,
         reference_date=ref,
-        total_conhecido=int(total_validadores),
+        total_conhecido=total_validadores,
+        em_piloto=em_piloto,
     )
 
 
-def build_history_series(df: pd.DataFrame, days: int = 3) -> pd.DataFrame:
+def build_history_series(
+    df: pd.DataFrame, days: int = 3, replaced: Optional[Set[str]] = None
+) -> pd.DataFrame:
     """Constrói série diária por versão com snapshot as-of na janela recente.
 
     Para cada data da janela (padrão: últimos 3 dias disponíveis), calcula a
     distribuição por versão usando o último estado conhecido de cada validador
-    até aquela data.
+    até aquela data. Substituído só conta até o último dia em que pingou: o
+    as-of não o carrega para os dias em que o veículo já tinha outro serial.
     """
     all_dates: List[date] = sorted(df["data"].unique())[-max(days, 1) :]
     chunks: List[pd.DataFrame] = []
     for d in all_dates:
         snapshot = _latest_snapshot_as_of(df, d)
+        if replaced:
+            snapshot = snapshot[
+                ~(snapshot["id_validador"].isin(replaced) & (snapshot["data"] < d))
+            ]
         if snapshot.empty:
             continue
         per_version = (
@@ -245,36 +372,14 @@ def build_inventory_table(
     fleet_truth: frozenset[str] | None = None,
     state: Optional[Dict[str, dict]] = None,
     roster: Optional[pd.DataFrame] = None,
+    replaced: Optional[Set[str]] = None,
 ) -> pd.DataFrame:
     ref = latest_date(df)
     all_dates: List[date] = sorted(df["data"].unique())
     df_deduped = _dedupe_max_version_per_day(df)
     ordered = _ordered_versions(df_deduped, target_build)
-
-    # Universo do inventário, do menor para o maior precedente de informação:
-    # roster (existe na frota) < estado persistente < janela do BigQuery.
-    rows: Dict[str, dict] = {}
-    if roster is not None and not roster.empty:
-        for r in roster.itertuples():
-            rows[str(r.id_validador)] = {
-                "id_veiculo": str(r.id_veiculo),
-                "versao_app": None,
-                "ultimo_ping": None,
-            }
-    if state:
-        for vid, rec in state.items():
-            rows[vid] = {
-                "id_veiculo": rec.get("id_veiculo", ""),
-                "versao_app": rec.get("versao_app") or None,
-                "ultimo_ping": _parse_iso_date(rec.get("data_ultimo_ping")),
-            }
-    snapshot = _latest_snapshot_as_of(df, ref)
-    for r in snapshot.itertuples():
-        rows[str(r.id_validador)] = {
-            "id_veiculo": str(r.id_veiculo),
-            "versao_app": str(r.versao_app),
-            "ultimo_ping": r.data,
-        }
+    rows = _known_universe(df, state, roster)
+    replaced = replaced or set()
 
     # Agregado só por id_validador (não por par com id_veiculo): se o
     # validador mudou de veiculo durante a janela, a atividade das datas em
@@ -309,11 +414,18 @@ def build_inventory_table(
     inventory["atividade_recente"] = inventory.apply(activity_for, axis=1)
 
     def _status(row: pd.Series) -> str:
+        if row["id_validador"] in replaced:
+            # Saiu do veículo: não volta a pingar ali, então offline não se aplica.
+            return "SUBSTITUÍDO"
         build = row["build_atual"]
         if build == "—":
             base = "NUNCA REPORTOU"
+        elif build == target_build:
+            base = "ATUALIZADO"
+        elif is_pilot(build, target_build):
+            base = "PILOTO"
         else:
-            base = "ATUALIZADO" if build == target_build else "PENDENTE"
+            base = "PENDENTE"
         if fleet_truth is None or row["id_validador"] in fleet_truth:
             return base
         dias = (ref - row["_ping"]).days if row["_ping"] else None
