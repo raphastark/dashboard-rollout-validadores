@@ -216,34 +216,40 @@ def resolve_rollout_config(
 
     A comparação é pelos números (`_version_key`): "V.2.23.4" declarado casa
     com "V.2.23.04" reportado, e passa a usar a grafia reportada — a que o
-    resto do painel compara. Versão que não casa com nenhuma conhecida
-    (erro de digitação, piloto encerrado, build_alvo que ninguém reporta
-    ainda) volta na lista de não encontradas, para a UI avisar.
+    resto do painel compara. Se a mesma versão aparece com mais de uma
+    grafia, o piloto vale para todas: uma grafia sem rótulo ficaria fora de
+    `declared_pilots` e poderia virar build alvo. Versão que não casa com
+    nenhuma conhecida (erro de digitação, piloto encerrado, build_alvo que
+    ninguém reporta ainda) volta na lista de não encontradas, para a UI avisar.
 
     Returns:
         (build_alvo, {versao: rotulo}, versões declaradas não encontradas).
     """
     known = {str(v) for v in known_versions if v}
-    by_number = {_version_key(v)[:3]: v for v in known if VERSION_REGEX.match(v.strip())}
+    by_number: Dict[Tuple[int, int, int], List[str]] = {}
+    for v in sorted(known):
+        if VERSION_REGEX.match(v.strip()):
+            by_number.setdefault(_version_key(v)[:3], []).append(v)
 
-    def _match(v: str) -> Optional[str]:
-        if v in known:
-            return v
-        return by_number.get(_version_key(v)[:3]) if VERSION_REGEX.match(v) else None
+    def _matches(v: str) -> List[str]:
+        if VERSION_REGEX.match(v):
+            return by_number.get(_version_key(v)[:3], [])
+        return [v] if v in known else []
 
     missing: List[str] = []
     labels: Dict[str, str] = {}
     for v, label in pilot_labels.items():
-        found = _match(v)
-        if found:
-            labels[found] = label
-        else:
+        found = _matches(v)
+        if not found:
             missing.append(v)
+        for spelling in found:
+            labels[spelling] = label
     if forced:
-        found = _match(forced)
+        found = _matches(forced)
         if not found:
             missing.append(forced)
-        forced = found or forced
+        elif forced not in found:
+            forced = found[0]
     return forced, labels, missing
 
 
