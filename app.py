@@ -5,12 +5,15 @@ import streamlit as st
 
 from src.data import (
     STATE_PRUNE_DAYS,
+    TARGET_MIN_SHARE,
+    VALIDATORS_PER_VEHICLE,
     clear_all_caches,
     fetch_fleet_mapping,
     fetch_fleet_truth,
     fetch_rollout_data,
     get_last_known_lock,
     get_last_known_store,
+    load_rollout_config,
     today_sp,
 )
 from src.metrics import (
@@ -21,8 +24,11 @@ from src.metrics import (
     compute_kpis,
     detect_target_build,
     filter_inventory,
+    find_replaced,
     latest_date,
     merge_last_known_state,
+    resolve_rollout_config,
+    unify_version_spellings,
 )
 from src.ui import (
     bigquery_source,
@@ -60,10 +66,11 @@ def inventory_fullscreen(
     df: pd.DataFrame,
     target_build: str,
     colors: dict[str, str],
+    pilot_labels: dict[str, str] | None = None,
 ) -> None:
     """Mesma tabela do painel (com os filtros atuais), sem teto de altura:
     o painel do dialogo rola inteiro, então todas as linhas ficam acessíveis."""
-    render_inventory_table(inventory_shown, total, df, target_build, colors)
+    render_inventory_table(inventory_shown, total, df, target_build, colors, pilot_labels)
 
 
 def main() -> None:
@@ -161,48 +168,90 @@ def main() -> None:
     # versão anterior (não existe OTA sem energia).
     store = get_last_known_store()
     with get_last_known_lock():
-        state = merge_last_known_state(store, df, roster, today_sp(), STATE_PRUNE_DAYS)
+        # Mesma build com grafias diferentes ("V.2.23.4"/"V.2.23.04") vira uma
+        # só antes de qualquer comparação de alvo, piloto ou KPI.
+        df, known = unify_version_spellings(df, store)
+        state = merge_last_known_state(known, df, roster, today_sp(), STATE_PRUNE_DAYS)
         store.clear()
         store.update(state)
 
-    target_build = detect_target_build(df)
-    kpis = compute_kpis(df, target_build, state=state)
-    inventory = build_inventory_table(
-        df, target_build, fleet_truth=fleet_truth, state=state, roster=roster
+    # Serial que saiu do veículo (outro ocupou a vaga) não conta em nada.
+    # A memória fica intacta: se ele voltar a pingar, a regra é reavaliada.
+    replaced = find_replaced(df, state, roster, VALIDATORS_PER_VEHICLE)
+    active_state = {vid: rec for vid, rec in state.items() if vid not in replaced}
+
+    remembered = [rec.get("versao_app") for rec in active_state.values()]
+    forced_target, pilot_labels, not_found = resolve_rollout_config(
+        *load_rollout_config(), remembered + df["versao_app"].tolist()
     )
-    history = build_history_series(df)
+    if not_found:
+        render_notice(
+            "Versão dos secrets [rollout] sem validador.",
+            f"Nenhum validador reporta {', '.join(not_found)}; o painel ignora "
+            "esse trecho até isso mudar. Confira a grafia exibida no painel "
+            "(ex.: V.2.23.04) ou remova o piloto encerrado.",
+        )
+    target_build = detect_target_build(
+        df,
+        pilot_labels,
+        forced_target,
+        TARGET_MIN_SHARE,
+        exclude=replaced,
+        known_versions=remembered,
+    )
+    kpis = compute_kpis(df, target_build, state=active_state)
+    inventory = build_inventory_table(
+        df,
+        target_build,
+        fleet_truth=fleet_truth,
+        state=state,
+        roster=roster,
+        replaced=replaced,
+    )
+    history = build_history_series(df, replaced=replaced)
     today_status = build_today_status(df)
 
     colors = version_colors(
         target_build,
-        [rec.get("versao_app") for rec in state.values()]
+        [rec.get("versao_app") for rec in active_state.values()]
         + df["versao_app"].tolist()
         + inventory["build_atual"].tolist(),
     )
 
-    counts = known_version_counts(state, today_status)
+    counts = known_version_counts(active_state, today_status)
     render_overview(
         kpis,
         counts,
         colors,
         never_reported_count(inventory),
         last_night_upgrades(df, target_build),
+        pilot_labels,
     )
 
     chart_left, chart_right = st.columns(2, gap="small")
     with chart_left:
         render_history_card(history, target_build, colors)
     with chart_right:
-        render_distribution_card(counts, target_build, colors, latest_date(df))
+        render_distribution_card(
+            counts,
+            target_build,
+            colors,
+            latest_date(df),
+            pilot_labels,
+            forced_target=bool(forced_target) and target_build == forced_target,
+            min_share=TARGET_MIN_SHARE,
+        )
 
     with st.container(key="inventory_card"):
+        by_status = status_counts(inventory)
         status, version, search, fullscreen = render_inventory_filters(
-            status_counts(inventory), available_versions(inventory)
+            by_status, available_versions(inventory)
         )
         shown = filter_by_status(filter_inventory(inventory, version, search), status)
+        total = by_status["substituido" if status == "substituido" else "todos"]
         if fullscreen:
-            inventory_fullscreen(shown, len(inventory), df, target_build, colors)
-        render_inventory_table(shown, len(inventory), df, target_build, colors)
+            inventory_fullscreen(shown, total, df, target_build, colors, pilot_labels)
+        render_inventory_table(shown, total, df, target_build, colors, pilot_labels)
 
 
 if __name__ == "__main__":

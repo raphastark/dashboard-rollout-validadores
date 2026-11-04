@@ -17,6 +17,7 @@ from .metrics import (
     _dedupe_max_version_per_day,
     _latest_snapshot_as_of,
     _version_key,
+    is_pilot,
 )
 
 # ---------------------------------------------------------------------------
@@ -61,6 +62,8 @@ THEMES: Dict[str, Dict[str, str]] = {
         "version-target": "#58D19B",
         "version-previous": "#7C93C3",
         "version-older": "#56607A",
+        "version-pilot": "#E0C3FD",
+        "version-pilot-2": "#B1F6FB",
         "version-none": "#3A4459",
     },
     "light": {
@@ -84,6 +87,8 @@ THEMES: Dict[str, Dict[str, str]] = {
         "version-target": "#1F9D63",
         "version-previous": "#5B74A8",
         "version-older": "#A3ABBA",
+        "version-pilot": "#73456E",
+        "version-pilot-2": "#157A82",
         "version-none": "#C9CED8",
     },
 }
@@ -94,14 +99,18 @@ STATUS_FILTERS: List[Tuple[str, str]] = [
     ("todos", "Todos"),
     ("atualizado", "Atualizados"),
     ("pendente", "Pendentes"),
+    ("piloto", "Piloto"),
     ("nunca", "Nunca reportou"),
     ("offline", "Offline"),
+    ("substituido", "Substituídos"),
 ]
 
 _STATUS_BASE = {
     "atualizado": "ATUALIZADO",
     "pendente": "PENDENTE",
+    "piloto": "PILOTO",
     "nunca": "NUNCA REPORTOU",
+    "substituido": "SUBSTITUÍDO",
 }
 
 _esc = html.escape
@@ -163,13 +172,23 @@ def page_icon() -> str:
 ROLE_TARGET = "version-target"
 ROLE_PREVIOUS = "version-previous"
 ROLE_OLDER = "version-older"
+ROLE_PILOT = "version-pilot"
+# Um tom por piloto: pilotos simultâneos têm finalidades diferentes (ex.:
+# biometria x cartão) e não podem se confundir no gráfico. Valores dos tokens
+# color-pilot-1 (lilás) e color-pilot-2 (ciano) do DS Novacap, medidos para
+# não se confundir com as cores de estado/versão nem para daltônicos — a nota
+# de cada token no DS traz os números. Um 3º piloto simultâneo repete o 1º
+# tom (a legenda com o nome desfaz a ambiguidade).
+PILOT_ROLES = (ROLE_PILOT, "version-pilot-2")
 
 
 def version_colors(target_build: str, versions: Iterable[Optional[str]]) -> Dict[str, str]:
-    """Mapeia versão -> papel: alvo (verde), anterior (azul), demais (cinza).
+    """Mapeia versão -> papel: alvo (verde), pilotos (lilás/ciano), anterior (azul), demais (cinza).
 
-    "Anterior" é a primeira versão, em ordem decrescente, que não é a alvo
-    (cobre também o caso de rollback, em que a alvo não é a mais alta).
+    Piloto é toda versão acima da alvo (is_pilot) — inclui sobras de um
+    rollback, em que a alvo deixa de ser a mais alta. Cada piloto ganha um
+    tom de PILOT_ROLES, do mais novo para o mais antigo. "Anterior" é a
+    primeira versão abaixo da alvo, em ordem decrescente.
     O valor é o nome do token; no HTML vira var(--token), que acompanha o
     modo claro/escuro.
     """
@@ -180,10 +199,14 @@ def version_colors(target_build: str, versions: Iterable[Optional[str]]) -> Dict
     if target_build:
         colors[target_build] = ROLE_TARGET
     previous_assigned = False
+    pilots = 0
     for v in unique:
         if v == target_build:
             continue
-        if not previous_assigned:
+        if is_pilot(v, target_build):
+            colors[v] = PILOT_ROLES[pilots % len(PILOT_ROLES)]
+            pilots += 1
+        elif not previous_assigned:
             colors[v] = ROLE_PREVIOUS
             previous_assigned = True
         else:
@@ -342,7 +365,18 @@ def known_version_counts(
 
 
 def never_reported_count(inventory: pd.DataFrame) -> int:
-    return int((inventory["build_atual"] == "—").sum())
+    # Pelo status, não pela build "—": mapeado que nunca reportou num veículo
+    # que já tem outros 2 reportando é SUBSTITUÍDO (planilha desatualizada).
+    return int((_status_base(inventory) == _STATUS_BASE["nunca"]).sum())
+
+
+def _version_tag(version: str, target: str, pilot_labels: Dict[str, str]) -> str:
+    """Texto entre a versão e a contagem na legenda: "alvo · ", "piloto <nome> · " ou "· "."""
+    if version == target:
+        return "alvo · "
+    if is_pilot(version, target):
+        return ("piloto " + pilot_labels.get(version, "")).strip() + " · "
+    return "· "
 
 
 def last_night_upgrades(df: pd.DataFrame, target_build: str) -> Optional[int]:
@@ -370,10 +404,12 @@ def render_overview(
     colors: Dict[str, str],
     never_reported: int,
     delta: Optional[int],
+    pilot_labels: Optional[Dict[str, str]] = None,
 ) -> None:
     target = kpis.target_build
     total = kpis.total_conhecido
     ordered = _ordered_for_display(list(counts), target)
+    pilot_labels = pilot_labels or {}
 
     if delta is None:
         second_line = "com versão conhecida"
@@ -394,7 +430,7 @@ def render_overview(
         '<span class="legend-item">'
         f'<span class="legend-item__swatch" style="background:{_color(colors, v)}"></span>'
         f'<span class="mono">{_esc(_short(v))}</span>'
-        f'{"alvo · " if v == target else "· "}{counts[v]}'
+        f"{_esc(_version_tag(v, target, pilot_labels))}{counts[v]}"
         "</span>"
         for v in ordered
     )
@@ -419,7 +455,8 @@ def render_overview(
         '<div class="adoption__main">'
         f'<span class="adoption__value">{_pct_br(kpis.adocao_alvo_pct)}</span>'
         '<span class="adoption__detail">'
-        f"<strong>{kpis.meta_atingida} de {total}</strong> validadores<br>{second_line}"
+        f"<strong>{kpis.meta_atingida} de {total}</strong> validadores"
+        f"{' fora de piloto' if kpis.em_piloto else ''}<br>{second_line}"
         "</span></div>"
         f'<div class="segbar">{parts}</div>'
         f'<div class="adoption__legend">{legend}</div>'
@@ -513,17 +550,22 @@ def render_history_card(
 
         totals = pivot.sum(axis=1)
         on_target = pivot[target_build] if target_build in pivot.columns else totals * 0
+        # Mesmo denominador da manchete: pilotos ficam fora do %.
+        pilots = [v for v in pivot.columns if is_pilot(v, target_build)]
+        base = totals - pivot[pilots].sum(axis=1) if pilots else totals
         annotations = [
             dict(
                 x=label,
                 y=float(total),
-                text=f"<b>{_pct_br(float(hit) / float(total) * 100.0) if total else '—'}</b>",
+                text=f"<b>{_pct_br(float(hit) / float(den) * 100.0) if den else '—'}</b>",
                 showarrow=False,
                 yanchor="bottom",
                 yshift=6,
                 font=dict(family=FONT_NUMBER, size=20, color=tokens["text"]),
             )
-            for label, total, hit in zip(labels, totals.tolist(), on_target.tolist())
+            for label, total, den, hit in zip(
+                labels, totals.tolist(), base.tolist(), on_target.tolist()
+            )
         ]
         y_max = float(totals.max()) if len(totals) else 1.0
 
@@ -565,21 +607,32 @@ def render_distribution_card(
     target_build: str,
     colors: Dict[str, str],
     reference: date,
+    pilot_labels: Optional[Dict[str, str]] = None,
+    forced_target: bool = False,
+    min_share: float = 0.10,
 ) -> None:
     """Distribuição por versão sobre o último estado conhecido de cada validador.
 
     Recebe as mesmas contagens da manchete (known_version_counts), para que
     validadores offline há mais de 3 dias entrem com a versão lembrada, como
-    o rodapé do card afirma, e os totais batam com "N de M".
+    o rodapé do card afirma. As barras somam todos os validadores conhecidos,
+    pilotos incluídos; o "N de M" da manchete os deixa de fora.
     """
+    pilot_labels = pilot_labels or {}
     total = sum(counts.values())
     rows = []
+    pilots: List[str] = []
     for v in _ordered_for_display(list(counts), target_build):
         n = counts[v]
         pct = (n / total * 100.0) if total else 0.0
         color = _color(colors, v)
+        title = ""
+        if is_pilot(v, target_build):
+            label = pilot_labels.get(v, "")
+            pilots.append(f"{_short(v)} ({label})" if label else _short(v))
+            title = f' title="{_esc(("Piloto " + label).strip())}"'
         rows.append(
-            '<span class="dist__version">'
+            f'<span class="dist__version"{title}>'
             f'<span class="swatch" style="background:{color}"></span>{_esc(_short(v))}</span>'
             '<div class="dist__track">'
             f'<div class="dist__fill" style="width:{pct:.2f}%;background:{color}"></div></div>'
@@ -591,14 +644,30 @@ def render_distribution_card(
         if rows
         else '<div class="empty">Nenhuma versão reportada na janela.</div>'
     )
+    if forced_target:
+        target_note = "Build alvo definida nos secrets ([rollout].build_alvo)."
+    else:
+        target_note = (
+            "Build alvo detectada automaticamente: a versão mais alta com pelo menos "
+            f"{min_share * 100:.0f}% dos validadores no dia mais recente."
+        )
+    foot = [target_note]
+    if pilots:
+        foot.append(
+            f"{_plural(len(pilots), 'Piloto', 'Pilotos')} (acima da alvo, fora da adoção): "
+            + ", ".join(pilots)
+            + "."
+        )
+    foot.append(
+        "Validadores offline contam com a última versão conhecida (versão não muda sem energia)."
+    )
     st.markdown(
         '<div class="card dist">'
         + _card_head("Distribuição por versão", f"Último estado conhecido · {reference:%d/%m/%Y}")
         + body
         + '<div class="card__foot">'
-        "<span>Build alvo detectada automaticamente: a versão mais alta reportada no dia mais recente.</span>"
-        "<span>Validadores offline contam com a última versão conhecida (versão não muda sem energia).</span>"
-        "</div></div>",
+        + "".join(f"<span>{_esc(line)}</span>" for line in foot)
+        + "</div></div>",
         unsafe_allow_html=True,
     )
 
@@ -616,11 +685,19 @@ def _is_offline(inventory: pd.DataFrame) -> pd.Series:
     return inventory["status_final"].str.contains("· OFFLINE", regex=False)
 
 
+def _is_replaced(inventory: pd.DataFrame) -> pd.Series:
+    return _status_base(inventory) == _STATUS_BASE["substituido"]
+
+
 def status_counts(inventory: pd.DataFrame) -> Dict[str, int]:
-    """Contagens do filtro de status, sobre o inventário completo."""
+    """Contagens do filtro de status, sobre o inventário completo.
+
+    "Todos" é a frota atual: substituídos (serial que saiu do veículo) só
+    aparecem no filtro próprio, para o carro não mostrar 3 validadores.
+    """
     base = _status_base(inventory)
     counts = {key: int((base == value).sum()) for key, value in _STATUS_BASE.items()}
-    counts["todos"] = len(inventory)
+    counts["todos"] = len(inventory) - counts["substituido"]
     counts["offline"] = int(_is_offline(inventory).sum())
     return counts
 
@@ -628,7 +705,7 @@ def status_counts(inventory: pd.DataFrame) -> Dict[str, int]:
 def filter_by_status(inventory: pd.DataFrame, status: Optional[str]) -> pd.DataFrame:
     """Offline é transversal: filtra quem tem o sufixo · OFFLINE."""
     if not status or status == "todos":
-        return inventory
+        return inventory[~_is_replaced(inventory)]
     if status == "offline":
         return inventory[_is_offline(inventory)]
     return inventory[_status_base(inventory) == _STATUS_BASE[status]]
@@ -721,21 +798,26 @@ def _activity_blocks(
     return "".join(blocks)
 
 
-def _status_html(status: str) -> str:
+def _status_html(status: str, dot_color: str = "", note: str = "") -> str:
+    """Status com ponto colorido; `dot_color`/`note` distinguem cada piloto."""
     base, *extra = status.split(" · ")
     label, tone = {
         "ATUALIZADO": ("Atualizado", "target"),
         "PENDENTE": ("Pendente", "previous"),
+        "PILOTO": ("Piloto", "pilot"),
         "NUNCA REPORTOU": ("Nunca reportou", "never"),
+        "SUBSTITUÍDO": ("Substituído", "replaced"),
     }.get(base, (base.capitalize(), "never"))
     flag = (
         f'<span class="status__flag"> · {_esc(" · ".join(e.capitalize() for e in extra))}</span>'
         if extra
         else ""
     )
+    dot_style = f' style="background:{dot_color}"' if dot_color else ""
+    note_html = f'<span class="status__note"> · {_esc(note)}</span>' if note else ""
     return (
-        f'<span class="status status--{tone}"><span class="status__dot"></span>'
-        f"{label}{flag}</span>"
+        f'<span class="status status--{tone}"><span class="status__dot"{dot_style}></span>'
+        f"{label}{note_html}{flag}</span>"
     )
 
 
@@ -745,7 +827,9 @@ def render_inventory_table(
     df: pd.DataFrame,
     target_build: str,
     colors: Dict[str, str],
+    pilot_labels: Optional[Dict[str, str]] = None,
 ) -> None:
+    pilot_labels = pilot_labels or {}
     days: List[date] = sorted(df["data"].unique())
     daily = _daily_versions(df)
     days_label = " · ".join(f"{d:%d}" for d in days)
@@ -756,21 +840,26 @@ def render_inventory_table(
         rows = []
         for r in inventory.itertuples(index=False):
             build = str(r.build_atual)
+            status = str(r.status_final)
+            build_attrs, dot_color, note = ' class="mono"', "", ""
             if build == "—":
-                build_class = " inv__build--none"
+                build_attrs = ' class="mono inv__build--none"'
             elif build == target_build:
-                build_class = " inv__build--target"
-            else:
-                build_class = ""
+                build_attrs = ' class="mono inv__build--target"'
+            elif is_pilot(build, target_build):
+                build_attrs = f' class="mono" style="color:{_color(colors, build)}"'
+                if status.startswith("PILOTO"):
+                    dot_color = _color(colors, build)
+                    note = pilot_labels.get(build, "")
             blocks = _activity_blocks(daily.get(str(r.id_validador), {}), days, colors)
             rows.append(
                 "<tr>"
                 f'<td class="inv__vehicle">{_esc(str(r.id_veiculo) or "—")}</td>'
                 f'<td class="mono">{_esc(str(r.id_validador))}</td>'
-                f'<td class="mono{build_class}">{_esc(build)}</td>'
+                f"<td{build_attrs}>{_esc(build)}</td>"
                 f'<td class="mono inv__ping">{_esc(str(r.ultimo_ping))}</td>'
                 f'<td><span class="blocks">{blocks}</span></td>'
-                f"<td>{_status_html(str(r.status_final))}</td>"
+                f"<td>{_status_html(status, dot_color, note)}</td>"
                 "</tr>"
             )
         body = (
@@ -786,6 +875,17 @@ def render_inventory_table(
     legend = (
         '<span class="legend-item"><span class="legend-block legend-block--target">'
         "</span>reportou na alvo</span>"
+    )
+    pilot_versions = sorted(
+        (v for v, role in colors.items() if role in PILOT_ROLES), key=_version_key, reverse=True
+    )
+    for v in pilot_versions:
+        legend += (
+            '<span class="legend-item"><span class="legend-block" '
+            f'style="background:{_color(colors, v)}"></span>'
+            f"piloto {_esc(pilot_labels.get(v) or _short(v))}</span>"
+        )
+    legend += (
         '<span class="legend-item"><span class="legend-block legend-block--previous">'
         "</span>reportou em versão anterior</span>"
     )
