@@ -652,14 +652,17 @@
 
 /* Tabela */
 .inv__scroll {
-  max-height: 560px;
+  /* Sem teto fixo: acompanha a resolução do monitor. O piso garante ~24
+     linhas (12 veículos) mesmo em telas baixas; a tabela é o último bloco
+     do painel, então pode encostar no fim da página. */
+  max-height: max(1260px, calc(100vh - 140px));
   overflow: auto;
 }
 table.inv {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text);
   margin: 0;
   border: 0;
@@ -678,13 +681,13 @@ table.inv thead th {
   z-index: 1;
   background: var(--surface);
   padding: 10px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--caption);
   box-shadow: inset 0 -1px 0 var(--border);
 }
 table.inv td {
-  padding: 11px 10px;
+  padding: 12px 10px;
   border-top: 1px solid var(--border);
 }
 table.inv tbody tr:first-child td {
@@ -702,7 +705,7 @@ table.inv tbody tr:hover td {
   background: var(--row-hover);
 }
 table.inv td.mono {
-  font-size: 12px;
+  font-size: 14px;
 }
 .inv__vehicle {
   font-weight: 600;
@@ -728,8 +731,8 @@ table.inv td.mono {
   gap: 5px;
 }
 .block {
-  width: 18px;
-  height: 10px;
+  width: 20px;
+  height: 12px;
   border-radius: 2px;
   display: inline-block;
 }
@@ -788,6 +791,61 @@ table.inv td.mono {
 .inv__source {
   margin-left: auto;
   font-size: 12px;
+}
+
+/* ============ INVENTÁRIO EM TELA CHEIA ============ */
+/* Botão na barra do inventário, no mesmo acabamento dos controles */
+.st-key-inventory_fullscreen button {
+  font-family: var(--font-ui) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  min-height: 0 !important;
+  padding: 5px 12px !important;
+  line-height: 1.2 !important;
+  border: 1px solid var(--control) !important;
+  border-radius: var(--radius-control) !important;
+  background: transparent !important;
+  color: var(--text-2) !important;
+  box-shadow: none !important;
+  white-space: nowrap;
+}
+.st-key-inventory_fullscreen button:hover {
+  border-color: var(--caption) !important;
+  color: var(--text) !important;
+}
+.st-key-inventory_card [data-testid="stColumn"]:has(.st-key-inventory_fullscreen) {
+  flex: 0 0 auto !important;
+  width: auto !important;
+}
+
+/* Painel do dialogo quase em tela cheia. O portal do st.dialog pode viver
+   fora do .stApp, então inject_styles() também define os tokens nele.
+   O Streamlit dimensiona um wrapper intermediário (1280px no "large") com
+   overflow recortando o painel — por isso o tamanho vale para os dois. */
+[data-testid="stDialog"] {
+  font-family: var(--font-ui);
+}
+[data-testid="stDialog"] > div,
+[data-testid="stDialog"] [role="dialog"] {
+  width: 96vw !important;
+  max-width: 96vw !important;
+  height: 92vh !important;
+  max-height: 92vh !important;
+}
+[data-testid="stDialog"] [role="dialog"] {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-card) !important;
+  color: var(--text);
+}
+/* Dentro do dialogo a rolagem é do painel inteiro, sem teto próprio */
+[data-testid="stDialog"] .inv__scroll {
+  max-height: none;
+}
+/* O corpo do dialogo (último filho do painel, após fechar e título) rola;
+   o painel em si não tem overflow, e o conteúdo poderia vazar. */
+[data-testid="stDialog"] [role="dialog"] > div:last-child {
+  overflow-y: auto !important;
 }
 
 /* Markdown dentro dos cards sem margens extras */
