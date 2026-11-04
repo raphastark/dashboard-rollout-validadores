@@ -86,9 +86,9 @@ A página segue a moldura do Monitoramento de Frota, de cima para baixo:
 
 Mudança **somente de apresentação** (`app.py`, `src/ui.py`, `static/styles.css`). Nenhuma mudança de dados ou métricas: query, janela, cache, memória de última versão conhecida e significado dos status continuam idênticos.
 
-- **Altura da tabela:** o teto fixo de 560px (~12 linhas, 6 veículos) virou `max-height: max(1260px, calc(100vh - 140px))` — piso de ~24 linhas (12 veículos) em qualquer monitor e teto que acompanha a resolução, já que a tabela é o último bloco do painel.
-- **Tela cheia:** botão "Tela cheia" no fim da barra do inventário abre a mesma tabela (com os filtros atuais) em um `st.dialog` de ~96% da tela, com rolagem própria — todas as linhas sem teto de altura. O portal do diálogo vive fora do `.stApp`, então os tokens de cor passam a ser definidos também nele; a camada `light-dark()` continua restrita ao `.stApp`, senão o diálogo resolveria pelo `color-scheme` do body.
-- **Fontes maiores:** tabela 13 → 15px, células monoespaçadas 12 → 14px e cabeçalho 12 → 13px; blocos de atividade (18×10 → 20×12) e espaçamento de linha levemente ampliados.
+- **Altura da tabela:** o teto fixo de 560px (~12 linhas, 6 veículos) virou `max-height: max(400px, calc(100vh - 180px))` — a caixa acompanha a altura da tela e, rolando até o fim da página, barra de filtros + tabela + rodapé cabem inteiros (sem rolagem dentro de rolagem). Com linhas de ~36px são ~24 linhas (12 veículos) numa tela de 1080px, mais em telas maiores. Uma primeira versão usava piso de 1260px, mais alto que a própria tela em monitores 1080p.
+- **Tela cheia:** botão "Tela cheia" no fim da barra do inventário abre a mesma tabela (com os filtros atuais) em um `st.dialog` de ~96% da tela, com rolagem própria — todas as linhas sem teto de altura, cabeçalho das colunas fixo ao rolar. O portal do diálogo vive fora do `.stApp`, então os tokens de cor passam a ser definidos também nele; a camada `light-dark()` continua restrita ao `.stApp`, senão o diálogo resolveria pelo `color-scheme` do body.
+- **Fontes maiores:** tabela 13 → 15px, células monoespaçadas 12 → 14px e cabeçalho 12 → 13px; blocos de atividade 18×10 → 20×12. A linha ficou mais compacta (altura de linha 1.35 em vez do 1.6 herdado do markdown, padding 11 → 7px) para a fonte maior não reduzir o número de linhas visíveis.
 - `st.dialog` exige Streamlit ≥ 1.37 — dentro do piso do `requirements.txt` (1.61).
 
 ### [2026-11-01] — Cor por piloto e aviso de versão dos secrets
