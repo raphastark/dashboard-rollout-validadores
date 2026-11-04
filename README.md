@@ -81,6 +81,15 @@ A página segue a moldura do Monitoramento de Frota, de cima para baixo:
 
 ## Changelog
 
+### [2026-11-04] — Inventário: mais linhas, tela cheia e fontes maiores
+
+Mudança **somente de apresentação** (`app.py`, `src/ui.py`, `static/styles.css`). Nenhuma mudança de dados ou métricas: query, janela, cache, memória de última versão conhecida e significado dos status continuam idênticos.
+
+- **Altura da tabela:** o teto fixo de 560px (~12 linhas, 6 veículos) virou `max-height: max(1260px, calc(100vh - 140px))` — piso de ~24 linhas (12 veículos) em qualquer monitor e teto que acompanha a resolução, já que a tabela é o último bloco do painel.
+- **Tela cheia:** botão "Tela cheia" no fim da barra do inventário abre a mesma tabela (com os filtros atuais) em um `st.dialog` de ~96% da tela, com rolagem própria — todas as linhas sem teto de altura. O portal do diálogo vive fora do `.stApp`, então os tokens de cor passam a ser definidos também nele; a camada `light-dark()` continua restrita ao `.stApp`, senão o diálogo resolveria pelo `color-scheme` do body.
+- **Fontes maiores:** tabela 13 → 15px, células monoespaçadas 12 → 14px e cabeçalho 12 → 13px; blocos de atividade (18×10 → 20×12) e espaçamento de linha levemente ampliados.
+- `st.dialog` exige Streamlit ≥ 1.37 — dentro do piso do `requirements.txt` (1.61).
+
 ### [2026-10-21] — Identidade visual Novacap
 
 Mudança **somente de apresentação** (`app.py`, `src/ui.py`, `static/styles.css`, `.streamlit/config.toml`). **Nenhuma mudança de dados ou métricas:** query, janela de 3 dias, TTL de 24h, memória de última versão conhecida, roster, API da frota como marcador auxiliar, detecção da build alvo e significado dos status continuam idênticos. Em `src/metrics.py` entrou apenas o campo `total_conhecido` no dataclass `KPIs` (o denominador da adoção que já era calculado), sem alterar nenhum cálculo.

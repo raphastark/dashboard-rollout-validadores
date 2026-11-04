@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
 from src.data import (
@@ -50,6 +51,19 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+
+@st.dialog("Inventário de validadores", width="large")
+def inventory_fullscreen(
+    inventory_shown: pd.DataFrame,
+    total: int,
+    df: pd.DataFrame,
+    target_build: str,
+    colors: dict[str, str],
+) -> None:
+    """Mesma tabela do painel (com os filtros atuais), sem teto de altura:
+    o painel do dialogo rola inteiro, então todas as linhas ficam acessíveis."""
+    render_inventory_table(inventory_shown, total, df, target_build, colors)
 
 
 def main() -> None:
@@ -182,10 +196,12 @@ def main() -> None:
         render_distribution_card(counts, target_build, colors, latest_date(df))
 
     with st.container(key="inventory_card"):
-        status, version, search = render_inventory_filters(
+        status, version, search, fullscreen = render_inventory_filters(
             status_counts(inventory), available_versions(inventory)
         )
         shown = filter_by_status(filter_inventory(inventory, version, search), status)
+        if fullscreen:
+            inventory_fullscreen(shown, len(inventory), df, target_build, colors)
         render_inventory_table(shown, len(inventory), df, target_build, colors)
 
 

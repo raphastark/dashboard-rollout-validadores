@@ -125,10 +125,13 @@ def inject_styles() -> None:
     """Injeta static/styles.css + os tokens de cor como variáveis CSS.
 
     O CSS vem primeiro: o @import das fontes só vale como primeira regra.
-    Os tokens ficam no .stApp em duas camadas: valores do modo detectado no
-    servidor (st.context.theme) e, onde houver suporte, light-dark(), que
-    segue o color-scheme que o próprio Streamlit aplica ao .stApp. Assim a
-    troca de tema pelo menu reflete na hora, sem esperar um rerun.
+    Os tokens ficam no .stApp e no container do st.dialog (cujo portal vive
+    fora do .stApp, como filho direto do body). O .stApp recebe duas camadas:
+    valores do modo detectado no servidor (st.context.theme) e, onde houver
+    suporte, light-dark(), que segue o color-scheme que o próprio Streamlit
+    aplica — a troca de tema pelo menu reflete na hora, sem rerun. O dialogo
+    recebe só a camada literal: fora do .stApp o light-dark() resolveria pelo
+    color-scheme do body (claro), e não pelo tema do painel.
     """
     mode = THEMES[theme_mode()]
     dark, light = THEMES["dark"], THEMES["light"]
@@ -136,7 +139,7 @@ def inject_styles() -> None:
     adaptive = ";".join(f"--{k}:light-dark({light[k]},{dark[k]})" for k in dark)
     css = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
     st.markdown(
-        f"<style>{css}\n.stApp{{{plain}}}\n"
+        f"<style>{css}\n.stApp,[data-testid=stDialog]{{{plain}}}\n"
         f"@supports (color: light-dark(#000, #fff)) {{ .stApp{{{adaptive}}} }}</style>",
         unsafe_allow_html=True,
     )
@@ -633,11 +636,15 @@ def filter_by_status(inventory: pd.DataFrame, status: Optional[str]) -> pd.DataF
 
 def render_inventory_filters(
     counts: Dict[str, int], versions: List[str]
-) -> Tuple[str, str, str]:
-    """Barra do inventário: título, status, versão e busca."""
+) -> Tuple[str, str, str, bool]:
+    """Barra do inventário: título, status, versão, busca e tela cheia.
+
+    Retorna também se o botão de tela cheia foi clicado — quem chama decide
+    o que fazer (abrir o dialogo depois de filtrar o inventário).
+    """
     labels = dict(STATUS_FILTERS)
-    title_col, status_col, version_col, search_col = st.columns(
-        [0.8, 4.2, 1.5, 1.9], vertical_alignment="center", gap="small"
+    title_col, status_col, version_col, search_col, fullscreen_col = st.columns(
+        [0.8, 4.2, 1.5, 1.9, 0.0001], vertical_alignment="center", gap="small"
     )
     with title_col:
         st.markdown('<span class="card__title">Inventário</span>', unsafe_allow_html=True)
@@ -665,7 +672,14 @@ def render_inventory_filters(
             key="search",
             label_visibility="collapsed",
         )
-    return status or "todos", version, search
+    with fullscreen_col:
+        fullscreen = st.button(
+            "Tela cheia",
+            key="inventory_fullscreen",
+            icon=":material/fullscreen:",
+            help="Ver todas as linhas do inventário em uma janela em tela cheia",
+        )
+    return status or "todos", version, search, bool(fullscreen)
 
 
 def _daily_versions(df: pd.DataFrame) -> Dict[str, Dict[date, str]]:
