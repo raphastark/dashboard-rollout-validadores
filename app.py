@@ -177,9 +177,7 @@ def main() -> None:
 
     # Serial que saiu do veículo (outro ocupou a vaga) não conta em nada.
     # A memória fica intacta: se ele voltar a pingar, a regra é reavaliada.
-    replaced = find_replaced(
-        df, state, roster, VALIDATORS_PER_VEHICLE, fleet_truth=fleet_truth
-    )
+    replaced = find_replaced(df, state, roster, VALIDATORS_PER_VEHICLE)
     active_state = {vid: rec for vid, rec in state.items() if vid not in replaced}
     active_window = df[~df["id_validador"].isin(replaced)]
 
@@ -211,7 +209,7 @@ def main() -> None:
         roster=roster,
         replaced=replaced,
     )
-    history = build_history_series(df, replaced=replaced)
+    history = build_history_series(df, replaced=replaced, slots=VALIDATORS_PER_VEHICLE)
     today_status = build_today_status(active_window)
 
     colors = version_colors(

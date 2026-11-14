@@ -225,13 +225,12 @@ def find_replaced(
     state: Optional[Dict[str, dict]] = None,
     roster: Optional[pd.DataFrame] = None,
     slots: int = 2,
-    fleet_truth: Optional[frozenset[str]] = None,
 ) -> Set[str]:
     """Infere a troca quando o veículo tem mais seriais que vagas.
 
     Com horário disponível, exige que os demais tenham continuado a reportar
-    por pelo menos REPLACEMENT_PING_GAP. A API só protege o serial que aparece
-    online. Para pings antigos na memória, vale a comparação por dia.
+    por pelo menos REPLACEMENT_PING_GAP. Para pings antigos sem horário na
+    memória, vale a comparação por dia.
     """
     ping_times = _latest_ping_times(df)
 
@@ -254,8 +253,6 @@ def find_replaced(
         if len(members) <= slots:
             continue
         for vid, ping, ping_time in members:
-            if fleet_truth and vid in fleet_truth:
-                continue
             newer = sum(
                 1
                 for other, other_ping, other_time in members
@@ -409,7 +406,10 @@ def compute_kpis(
 
 
 def build_history_series(
-    df: pd.DataFrame, days: int = 3, replaced: Optional[Set[str]] = None
+    df: pd.DataFrame,
+    days: int = 3,
+    replaced: Optional[Set[str]] = None,
+    slots: int = 2,
 ) -> pd.DataFrame:
     """Constrói série diária por versão com snapshot as-of na janela recente.
 
@@ -425,7 +425,9 @@ def build_history_series(
         snapshot = _latest_snapshot_as_of(df, d)
         if replaced is not None:
             replaced_on_day = (
-                replaced if d == all_dates[-1] else find_replaced(df[df["data"] <= d])
+                replaced
+                if d == all_dates[-1]
+                else find_replaced(df[df["data"] <= d], slots=slots)
             )
             snapshot = snapshot[
                 ~(
