@@ -9,6 +9,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 import pandas as pd
 
 VERSION_REGEX = re.compile(r"^V\.(\d+)\.(\d+)\.(\d+)$", re.IGNORECASE)
+REPLACEMENT_PING_GAP = timedelta(minutes=30)
 
 ACTIVITY_DOTS = ["🟢", "🔵", "🟡", "🟣", "🔴", "🟠", "🟤"]
 NO_ACTIVITY_DOT = "⚪"
@@ -107,6 +108,17 @@ def unify_version_spellings(
     )
 
 
+def _latest_ping_times(df: pd.DataFrame) -> Dict[Tuple[str, str], pd.Timestamp]:
+    if "ultimo_ping_gps" not in df:
+        return {}
+    return (
+        df.groupby(["id_veiculo", "id_validador"])["ultimo_ping_gps"]
+        .max()
+        .dropna()
+        .to_dict()
+    )
+
+
 def merge_last_known_state(
     prev_state: Dict[str, dict],
     window_df: pd.DataFrame,
@@ -131,9 +143,16 @@ def merge_last_known_state(
     # a query só guarda a data do ping, então uma sessão com df stale do mesmo
     # dia poderia regredir a build lembrada sem esse desempate.
     snap = _latest_snapshot_as_of(window_df, latest_date(window_df))
+    ping_times = _latest_ping_times(window_df)
     for row in snap.itertuples():
         vid = str(row.id_validador)
+        vehicle = str(row.id_veiculo)
         existing = state.get(vid) or {}
+        ping_time = ping_times.get((vehicle, vid))
+        if existing.get("id_veiculo") == vehicle:
+            previous_time = existing.get("ultimo_ping_gps")
+            if previous_time is not None and (ping_time is None or previous_time > ping_time):
+                ping_time = previous_time
         existing_ping = _parse_iso_date(existing.get("data_ultimo_ping"))
         if existing_ping is not None:
             if existing_ping > row.data:
@@ -144,11 +163,14 @@ def merge_last_known_state(
                 and existing_version
                 and _version_key(existing_version) >= _version_key(str(row.versao_app))
             ):
+                if existing.get("id_veiculo") == vehicle:
+                    existing["ultimo_ping_gps"] = ping_time
                 continue
         state[vid] = {
-            "id_veiculo": str(row.id_veiculo),
+            "id_veiculo": vehicle,
             "versao_app": str(row.versao_app),
             "data_ultimo_ping": row.data.isoformat(),
+            "ultimo_ping_gps": ping_time,
         }
 
     if roster is not None and not roster.empty:
@@ -203,40 +225,47 @@ def find_replaced(
     state: Optional[Dict[str, dict]] = None,
     roster: Optional[pd.DataFrame] = None,
     slots: int = 2,
+    fleet_truth: Optional[frozenset[str]] = None,
 ) -> Set[str]:
-    """Validadores que saíram do veículo porque outro serial ocupou a vaga.
+    """Infere a troca quando o veículo tem mais seriais que vagas.
 
-    Cada veículo tem `slots` validadores. Se no mesmo veículo há pelo menos
-    `slots` outros validadores com ping mais recente que o dele, o serial foi
-    trocado (ex.: validador em loop de reinício substituído por outro). Ele
-    sai das contagens em vez de aparecer como 3º validador "offline" do carro.
-    Validador mapeado que nunca reportou, num veículo com `slots` outros
-    reportando, é mapeamento desatualizado: mesmo tratamento.
-
-    A comparação é por dia (a query só guarda a data do ping): troca feita no
-    mesmo dia empata e só se resolve na consulta seguinte. Três validadores
-    pingando no mesmo dia também empatam — anomalia de cadastro que continua
-    visível em vez de ser escondida.
-
-    Não poda a memória de última versão: se o serial voltar a pingar em
-    qualquer veículo, a janela o traz de volta e a regra é reavaliada.
+    Com horário disponível, exige que os demais tenham continuado a reportar
+    por pelo menos REPLACEMENT_PING_GAP. A API só protege o serial que aparece
+    online. Para pings antigos na memória, vale a comparação por dia.
     """
-    by_vehicle: Dict[str, List[Tuple[str, Optional[date]]]] = {}
+    ping_times = _latest_ping_times(df)
+
+    by_vehicle: Dict[str, List[Tuple[str, Optional[date], Optional[pd.Timestamp]]]] = {}
     for vid, rec in _known_universe(df, state, roster).items():
-        if rec["id_veiculo"]:
-            by_vehicle.setdefault(rec["id_veiculo"], []).append((vid, rec["ultimo_ping"]))
+        vehicle = rec["id_veiculo"]
+        if vehicle:
+            saved = (state or {}).get(vid, {})
+            ping_time = ping_times.get((vehicle, vid))
+            if saved.get("id_veiculo") == vehicle:
+                saved_time = saved.get("ultimo_ping_gps")
+                if saved_time is not None and (ping_time is None or saved_time > ping_time):
+                    ping_time = saved_time
+            by_vehicle.setdefault(vehicle, []).append(
+                (vid, rec["ultimo_ping"], ping_time)
+            )
 
     replaced: Set[str] = set()
     for members in by_vehicle.values():
         if len(members) <= slots:
             continue
-        for vid, ping in members:
+        for vid, ping, ping_time in members:
+            if fleet_truth and vid in fleet_truth:
+                continue
             newer = sum(
                 1
-                for other, other_ping in members
+                for other, other_ping, other_time in members
                 if other != vid
                 and other_ping is not None
-                and (ping is None or other_ping > ping)
+                and (
+                    other_time - ping_time >= REPLACEMENT_PING_GAP
+                    if ping_time is not None and other_time is not None
+                    else ping is None or other_ping > ping
+                )
             )
             if newer >= slots:
                 replaced.add(vid)
@@ -356,7 +385,7 @@ def compute_kpis(
     # Com estado persistente, adoção/variedade/meta refletem a última versão
     # CONHECIDA (validador em manutenção conta como a versão que tinha ao parar
     # de reportar). Frota operante continua sendo quem reportou na janela.
-    if state:
+    if state is not None:
         known = [
             rec.get("versao_app") for rec in state.values() if rec.get("versao_app")
         ]
@@ -386,16 +415,23 @@ def build_history_series(
 
     Para cada data da janela (padrão: últimos 3 dias disponíveis), calcula a
     distribuição por versão usando o último estado conhecido de cada validador
-    até aquela data. Substituído só conta até o último dia em que pingou: o
-    as-of não o carrega para os dias em que o veículo já tinha outro serial.
+    até aquela data. Cada dia aplica a regra de troca aos pings disponíveis
+    até ali. O as-of também deixa de carregar substituídos atuais para dias
+    passados em que eles já tinham parado de pingar.
     """
     all_dates: List[date] = sorted(df["data"].unique())[-max(days, 1) :]
     chunks: List[pd.DataFrame] = []
     for d in all_dates:
         snapshot = _latest_snapshot_as_of(df, d)
-        if replaced:
+        if replaced is not None:
+            replaced_on_day = (
+                replaced if d == all_dates[-1] else find_replaced(df[df["data"] <= d])
+            )
             snapshot = snapshot[
-                ~(snapshot["id_validador"].isin(replaced) & (snapshot["data"] < d))
+                ~(
+                    snapshot["id_validador"].isin(replaced_on_day)
+                    | (snapshot["id_validador"].isin(replaced) & (snapshot["data"] < d))
+                )
             ]
         if snapshot.empty:
             continue

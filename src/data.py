@@ -56,8 +56,8 @@ MAPPING_CSV_URL = (
 STATE_PRUNE_DAYS = 7
 
 # Vagas de validador por veículo (a planilha de mapeamento tem 2 colunas).
-# Serial a mais num veículo, com essa quantidade de outros pingando depois
-# dele, foi trocado — sai das contagens (ver metrics.find_replaced).
+# Serial a mais num veículo pode sair das contagens quando os demais
+# continuam reportando por tempo suficiente (ver metrics.find_replaced).
 VALIDATORS_PER_VEHICLE = 2
 
 # Fatia mínima da frota para uma versão ser a build alvo. Versão acima da
@@ -85,16 +85,18 @@ def get_last_known_lock() -> threading.Lock:
     return threading.Lock()
 
 ROLLOUT_QUERY = """
-SELECT DISTINCT
+SELECT
     data,
     id_veiculo,
     id_validador,
-    versao_app
+    versao_app,
+    MAX(datetime_gps) AS ultimo_ping_gps
 FROM `rj-smtr.monitoramento.gps_validador`
 WHERE id_operadora = @id_operadora
   AND data BETWEEN DATE_SUB(CURRENT_DATE('America/Sao_Paulo'), INTERVAL @window_days DAY) AND CURRENT_DATE('America/Sao_Paulo')
   AND (id_veiculo LIKE '515%' OR id_veiculo LIKE '516%')
   AND datetime_gps >= CAST(DATE_SUB(CURRENT_DATE('America/Sao_Paulo'), INTERVAL @window_days DAY) AS DATETIME)
+GROUP BY data, id_veiculo, id_validador, versao_app
 ORDER BY id_veiculo ASC, id_validador ASC
 """
 
@@ -123,6 +125,7 @@ def fetch_rollout_data(window_days: int = DEFAULT_WINDOW_DAYS) -> Tuple[pd.DataF
     )
     df = client.query(ROLLOUT_QUERY, job_config=job_config).to_dataframe()
     df["data"] = pd.to_datetime(df["data"]).dt.date
+    df["ultimo_ping_gps"] = pd.to_datetime(df["ultimo_ping_gps"])
     df["id_veiculo"] = df["id_veiculo"].astype(str)
     df["id_validador"] = df["id_validador"].astype(str)
     df["versao_app"] = df["versao_app"].astype(str)
