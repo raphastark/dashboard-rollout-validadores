@@ -352,7 +352,7 @@ def known_version_counts(
     Com memória de última versão conhecida, conta o estado (mesmo denominador
     da adoção); sem ela, cai no snapshot da janela (build_today_status).
     """
-    if state:
+    if state is not None:
         counts: Dict[str, int] = {}
         for rec in state.values():
             v = rec.get("versao_app")

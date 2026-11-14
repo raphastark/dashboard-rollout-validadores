@@ -179,10 +179,11 @@ def main() -> None:
     # A memória fica intacta: se ele voltar a pingar, a regra é reavaliada.
     replaced = find_replaced(df, state, roster, VALIDATORS_PER_VEHICLE)
     active_state = {vid: rec for vid, rec in state.items() if vid not in replaced}
+    active_window = df[~df["id_validador"].isin(replaced)]
 
     remembered = [rec.get("versao_app") for rec in active_state.values()]
     forced_target, pilot_labels, not_found = resolve_rollout_config(
-        *load_rollout_config(), remembered + df["versao_app"].tolist()
+        *load_rollout_config(), remembered + active_window["versao_app"].tolist()
     )
     if not_found:
         render_notice(
@@ -208,8 +209,8 @@ def main() -> None:
         roster=roster,
         replaced=replaced,
     )
-    history = build_history_series(df, replaced=replaced)
-    today_status = build_today_status(df)
+    history = build_history_series(df, replaced=replaced, slots=VALIDATORS_PER_VEHICLE)
+    today_status = build_today_status(active_window)
 
     colors = version_colors(
         target_build,
@@ -224,7 +225,7 @@ def main() -> None:
         counts,
         colors,
         never_reported_count(inventory),
-        last_night_upgrades(df, target_build),
+        last_night_upgrades(active_window, target_build),
         pilot_labels,
     )
 
